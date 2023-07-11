@@ -1,13 +1,13 @@
 services:
   markernav:
-    image: markernav:test
+    image: markernav:x86
+    # image: markernav:arm
     build: .
     network_mode: host
     volumes:
       - .:/markernav
     networks:
       my_bridge:
-        -
 
 networks:
   my_bridge:
