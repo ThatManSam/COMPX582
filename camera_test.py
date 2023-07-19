@@ -1,14 +1,27 @@
+import argparse
+
 import cv2
+
 import camera.camera as camera
+from camera import Calibrator
+from camera.detector import Detector
 
-cam = camera.Camera(color=True)
+parser = argparse.ArgumentParser(description="Program that detects april tags from an image")
+parser.add_argument('-c', '--camera', action='store_true', help='Use the Basler GbE camera as the input',
+                    required=False)
+args = parser.parse_args()
 
-print("RUNNING CALIBRATION")
-camera.calibrate_camera(cam, 'images/calibrate*.jpg')
-print("COMPLETED CALIBRATION")
+if args.camera:
+    cam = camera.Camera(color=True)
+    print("Getting image")
+    img = cam.get_image()
+    cam.close_camera()
+    if img is None:
+        exit(2)
+else:
+    img = cv2.imread('images/marker_1500mm.png', cv2.IMREAD_GRAYSCALE)
 
-img = cam.get_image()
-
+print(img.shape)
 cv2.namedWindow("Camera Test", cv2.WINDOW_NORMAL)
 cv2.imshow('Camera Test', img)
 
@@ -16,4 +29,23 @@ cv2.waitKey(5000)
 
 cv2.destroyAllWindows()
 
-cam.close_camera()
+
+# print("RUNNING CALIBRATION")
+# camera_matrix = camera.calibrate_camera(cam, 'images/calibrate*.jpg')
+# print("COMPLETED CALIBRATION")
+
+tag_size = 0.04     # 4 cm
+# calibrator = Calibrator()
+print("Loading calibration")
+calibrator = Calibrator.load_calibration('calibration.pickle')
+# calibrator.calibrate(filename_format='images/calibrate*.jpg')
+detector = Detector(tag_size)
+print("Detecting tags")
+tags = detector.detect(img, calibrator)
+
+if len(tags) > 0:
+    print(tags[0])
+    print(f"Distance is {tags[0].pose_t[1][-1]:.2f}")
+    # calculate_distance(tags[-1], 11, 100)
+else:
+    print("No tags found!")
