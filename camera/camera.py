@@ -3,14 +3,10 @@ from pypylon import pylon
 CAMERA_SERIAL = '23884525'
 
 
-def calibrate_camera(*args, **kwargs):
-    from .calibrate import calibrate
-    calibrate(*args, **kwargs)
-
-
 class Camera:
-    def __init__(self, color=False):
+    def __init__(self, color=False, auto=True):
         self.color = color
+        self.auto_exposure = auto
 
         ip_address = '192.168.200.223'
         info = pylon.DeviceInfo()
@@ -47,8 +43,12 @@ class Camera:
     #     self.camera.StartGrabbing(pylon.GrabStrategy_LatestImages)
 
     def _configure_camera(self):
-        self.camera.ExposureAuto = 'Continuous'
-        self.camera.GainAuto = 'Continuous'
+        if self.auto_exposure:
+            self.camera.ExposureAuto = 'Continuous'
+            self.camera.GainAuto = 'Continuous'
+        else:
+            self.camera.GainRaw = 0
+            self.camera.ExposureTimeRaw = 30000
         self.camera.BalanceWhiteAuto = 'Continuous'
         print(self.camera.PixelFormat.Symbolics)
         self.camera.PixelFormat = 'BayerRG8' if self.color else 'Mono8'
@@ -59,7 +59,13 @@ class Camera:
         #     grab_result = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
         #     if grab_result.GrabSucceeded():
         #         return self.converter.Convert(grab_result).GetArray()
+        if not hasattr(self, 'camera'):
+            print("Not connected to a camera, cannot get image!")
+            return None
         return self.camera.GrabOne(1000).GetArray()
 
     def close_camera(self):
-        self.camera.Close()
+        if hasattr(self, 'camera') and self.camera.IsOpen():
+            self.camera.Close()
+        else:
+            print("Warning: Tried to close camera that wasn't open, did nothing")
