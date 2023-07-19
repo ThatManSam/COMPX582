@@ -13,7 +13,7 @@ if [[ "$platform" == "arm64" || "$platform" == "aarch64" ]]; then
 # if [[ "$platform" == "aarch64" ]]; then
     URL=https://www.baslerweb.com/fp-1668420816/media/downloads/software/pylon_software/pylon_7.2.1.25747_aarch64_debs.tar.gz
 else
-    URL=https://www.baslerweb.com/fp-1668420813/media/downloads/software/pylon_software/pylon_7.2.1.25747_x86_64_deps.tar.gz
+    URL=https://www.baslerweb.com/fp-1668420813/media/downloads/software/pylon_software/pylon_7.2.1.25747_x86_64_debs.tar.gz
 fi
 
 echo "/Downloading Pylon for $platform from $URL"
