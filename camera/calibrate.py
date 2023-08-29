@@ -13,12 +13,17 @@ NUM_CALIBRATION_IMAGES = 10
 
 
 class Calibrator:
-    def __init__(self):
-        self.ret = None
-        self.camera_matrix = None
-        self.dist = None
-        self.rot_vecs = None
-        self.tran_vecs = None
+    def __init__(self, camera_matrix = None, dist = None,
+                rot_vecs = None, tran_vecs = None):
+        self.camera_matrix = camera_matrix
+        self.dist = dist
+        self.rot_vecs = rot_vecs
+        self.tran_vecs = tran_vecs
+        
+        self.ret = self.camera_matrix != None and \
+        self.dist != None and \
+        self.rot_vecs != None and \
+        self.tran_vecs != None
 
     def save_calibration(self, filename):
         with open(filename, 'wb') as file:
@@ -29,7 +34,9 @@ class Calibrator:
         with open(filename, 'rb') as file:
             return pickle.load(file)
 
-    def calibrate(self, camera=None, filename_format=None):
+    def calibrate(self, camera=None, filename_format=None, count=-1):
+        num_image = NUM_CALIBRATION_IMAGES if count == -1 else count
+
         chessboard_size = (9, 6)
         frame_size = (2448, 2048)
 
@@ -55,8 +62,8 @@ class Calibrator:
             images = []
             cam = Camera() if camera is None else camera
 
-            input(f"Start calibration ({NUM_CALIBRATION_IMAGES} images)? <Press ENTER>")
-            for i in range(NUM_CALIBRATION_IMAGES):
+            input(f"Start calibration ({num_image} images)? <Press ENTER>")
+            for i in range(num_image):
                 print(f'Taking image {i}')
                 for attempt in range(3):
                     try:
@@ -71,7 +78,7 @@ class Calibrator:
                             print('Error getting image')
                         else:
                             continue
-                if i == NUM_CALIBRATION_IMAGES:
+                if i == num_image:
                     break
                 input("Ready for next image? <Press ENTER>")
 
@@ -116,6 +123,9 @@ class Calibrator:
         print("total error: {}".format(mean_error / len(obj_points)))
 
     def undistort_image(self, image):
+        if not self.ret:
+            print("Not Calibrated, can't undistort image")
+            return
         img = cv2.imread(image)
         h, w = img.shape[:2]
         new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(self.camera_matrix, self.dist, (w, h), 1, (w, h))
@@ -180,8 +190,15 @@ def calibrate_distance(camera=None, known_distance=-1, filename=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Program that calibrates a camera using OpenCV checkerboard")
     parser.add_argument('filename', help='File to save calibration instance in')
+    parser.add_argument('-c', '--count', help='The number of images to use in the calibration')
+    args = parser.parse_args()
+    try:
+        count = int(args.count)
+    except ValueError:
+        print("Count must be a number")
+        exit(1)
     calibrator = Calibrator()
-    calibrator.calibrate()
-    filename_arg = parser.parse_args().filename
+    calibrator.calibrate(count=count)
+    filename_arg = args.filename
     print(f"Saving calibration to {filename_arg}")
     calibrator.save_calibration(filename_arg)

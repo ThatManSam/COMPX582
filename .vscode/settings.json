@@ -1,4 +1,11 @@
 {
     "python.analysis.typeCheckingMode": "basic",
-    "python.terminal.activateEnvironment": true
+    "python.terminal.activateEnvironment": true,
+    "python.autoComplete.extraPaths": [
+        "/opt/ros/noetic/lib/python3/dist-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/opt/ros/noetic/lib/python3/dist-packages"
+    ],
+    "cmake.sourceDirectory": "/home/joelshep/documents/university/COMPX582/camera/catkin_ws/src/test_get_image"
 }

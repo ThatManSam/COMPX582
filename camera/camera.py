@@ -1,10 +1,9 @@
-from pypylon import pylon
-
 CAMERA_SERIAL = '23884525'
 
 
 class Camera:
     def __init__(self, color=False, auto=True):
+        from pypylon import pylon
         self.color = color
         self.auto_exposure = auto
 
@@ -47,10 +46,12 @@ class Camera:
             self.camera.ExposureAuto = 'Continuous'
             self.camera.GainAuto = 'Continuous'
         else:
-            self.camera.GainRaw = 0
-            self.camera.ExposureTimeRaw = 30000
+            self.camera.GainAuto = 'Off'
+            self.camera.GainRaw = 100
+            self.camera.ExposureAuto = 'Off'
+            self.camera.ExposureTimeRaw = 100000
         self.camera.BalanceWhiteAuto = 'Continuous'
-        print(self.camera.PixelFormat.Symbolics)
+        # print(self.camera.PixelFormat.Symbolics)
         self.camera.PixelFormat = 'BayerRG8' if self.color else 'Mono8'
         print(self.camera.PixelFormat.GetValue())
 
@@ -62,7 +63,13 @@ class Camera:
         if not hasattr(self, 'camera'):
             print("Not connected to a camera, cannot get image!")
             return None
-        return self.camera.GrabOne(1000).GetArray()
+        while True:
+            img = self.camera.GrabOne(5000).GetArray()
+            if img.shape[0] == 0 or img.shape[1] == 0:
+                print("Warning: Got invalid image, trying again")
+                continue
+            break
+        return img
 
     def close_camera(self):
         if hasattr(self, 'camera') and self.camera.IsOpen():

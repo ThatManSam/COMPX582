@@ -12,7 +12,7 @@ parser.add_argument('-c', '--camera', action='store_true', help='Use the Basler 
 args = parser.parse_args()
 
 if args.camera:
-    cam = camera.Camera(color=True)
+    cam = camera.Camera(color=False, auto=False)
     print("Getting image")
     img = cam.get_image()
     cam.close_camera()
@@ -37,7 +37,7 @@ cv2.destroyAllWindows()
 tag_size = 0.04     # 4 cm
 # calibrator = Calibrator()
 print("Loading calibration")
-calibrator = Calibrator.load_calibration('calibration.pickle')
+calibrator = Calibrator.load_calibration('calibration_10.pickle')
 # calibrator.calibrate(filename_format='images/calibrate*.jpg')
 detector = Detector(tag_size)
 print("Detecting tags")
@@ -45,7 +45,8 @@ tags = detector.detect(img, calibrator)
 
 if len(tags) > 0:
     print(tags[0])
-    print(f"Distance is {tags[0].pose_t[1][-1]:.2f}")
+    distance = max(max(tags[0].pose_t[0][-1], tags[0].pose_t[1][-1]), tags[0].pose_t[2][-1])
+    print(f"Distance is {distance:.2f}")
     # calculate_distance(tags[-1], 11, 100)
 else:
     print("No tags found!")

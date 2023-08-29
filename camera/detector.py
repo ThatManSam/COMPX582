@@ -10,7 +10,7 @@ from camera.camera import Camera
 
 
 class Detector:
-    def __init__(self, tag_size):
+    def __init__(self, tag_size=None):
         self.at_detector = at_Detector(families='tagStandard52h13',
                                        nthreads=1,
                                        quad_decimate=1.0,
@@ -22,12 +22,13 @@ class Detector:
 
     def detect(self, img, calibration: Calibrator = None):
         if calibration is not None:
+            if self.tag_size is None:
+                print("No tag size set, cannot estimate pose")
             return self.at_detector.detect(img,
                                            estimate_tag_pose=True,
                                            camera_params=calibration.get_camera_params(),
                                            tag_size=self.tag_size)
-        else:
-            return self.at_detector.detect(img)
+        return self.at_detector.detect(img)
 
     @staticmethod
     def overlay_tags(img, tags, output_filename=None):
@@ -55,6 +56,7 @@ class Detector:
                 os.makedirs(output_dir)
             if not cv2.imwrite(output_path, color_img):
                 print(f"DIDN'T SAVE {output_path}")
+        return color_img
 
     def run_from_camera(self):
         camera = Camera()
