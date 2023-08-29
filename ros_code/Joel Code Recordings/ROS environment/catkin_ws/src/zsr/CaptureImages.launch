@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<launch>
+    <arg name="CameraIDs" default="[basler_1L,basler_1R]" />
+    <arg name="BagName"/>
+    <node pkg="zsr" name="CaptureImagesROS" type="CaptureImagesROS.py" output="screen">
+    	<rosparam param="CameraIDs" subst_value="True">$(arg CameraIDs)</rosparam>
+        <param name="FPS" value="1" />
+    </node>
+    <node name="RecordingRosbag" pkg="rosbag" type="record" args="record -o /media/externaldrive/bags/$(arg BagName).bag --split --duration=5m /baslerimages /cmd_vel /cmd_vel_angular_adjusted /Inertial_Labs/gnss_data /Inertial_Labs/gps_data /Inertial_Labs/ins_data /Inertial_Labs/marine_data /Inertial_Labs/sensor_data /imu_data /lwheel_desired_rate /lwheel_rate /lwheel_ticks /odom /rwheel_desired_rate /rwheel_rate /rwheel_ticks /vo" output="screen"/>
+</launch>

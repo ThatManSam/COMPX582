@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<launch>
+    <arg name="OrchardID" default="" />
+    <arg name="CameraIDs" default="[basler_1L,basler_2L,basler_3L]" />
+    <arg name="CamConfigLocation" default="/home/billy/CameraConfigs/" />
+    <arg name="FolderLocation" default="/media/externaldrive/CompletedRuns/" />
+
+    <node pkg="zsr" name="CaptureImagesROS" type="CaptureImagesROS.py" output="screen">
+    	<rosparam param="CameraIDs" subst_value="True">$(arg CameraIDs)</rosparam>
+        <param name="FPS" value="0.016666666" />
+    </node>
+
+    <node pkg="zsr" name="ProcessSensorsROS" type="ProcessSensorsROS.py" output="screen">
+    	<param name="OrchardID" value="$(arg OrchardID)" if="$(eval OrchardID != '')" />
+    	<param name="OrchardID" command="date +'%d-%m-%Y_%I-%M-%S'" unless="$(eval OrchardID != '')" />
+        <param name="FolderLocation" value="$(arg FolderLocation)" />
+        <rosparam param="CameraIDs" subst_value="True">$(arg CameraIDs)</rosparam>
+        <param name="CamConfigLocation" value="$(arg CamConfigLocation)" />
+    </node>
+    <?ignore
+    <node pkg="rosbag" name="$(arg OrchardID)" type="record" args="record -o /media/externaldrive/bags/$(arg OrchardID) --split --duration=5m -a" if="$(eval OrchardID != '')" /> 
+    <node pkg="rosbag" name="date +'%d-%m-%Y_%I-%M-%S'" type="record" args="record -o /media/externaldrive/bags/ --split --duration=5m -a" unless="$(eval OrchardID != '')" />
+    ?>
+</launch>
