@@ -1,0 +1,11 @@
+{
+    "python.analysis.extraPaths": [
+        "/home/joelshep/documents/university/COMPX582/camera/catkin_ws/devel/lib/python3/dist-packages",
+        "/opt/ros/noetic/lib/python3/dist-packages"
+    ],
+    "python.autoComplete.extraPaths": [
+        "/home/joelshep/documents/university/COMPX582/camera/catkin_ws/devel/lib/python3/dist-packages",
+        "/opt/ros/noetic/lib/python3/dist-packages"
+    ],
+    "cmake.sourceDirectory": "/home/joelshep/documents/university/COMPX582/camera/catkin_ws/src/test_get_image"
+}

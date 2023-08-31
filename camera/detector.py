@@ -2,6 +2,7 @@ import argparse
 import os
 import sys
 from time import sleep
+from typing import Optional
 import cv2
 from dt_apriltags import Detector as at_Detector
 
@@ -10,7 +11,7 @@ from camera.camera import Camera
 
 
 class Detector:
-    def __init__(self, tag_size=None):
+    def __init__(self, tag_size: Optional[int] = None, calibrator: Optional[Calibrator] = None):
         self.at_detector = at_Detector(families='tagStandard52h13',
                                        nthreads=1,
                                        quad_decimate=1.0,
@@ -19,20 +20,27 @@ class Detector:
                                        decode_sharpening=0.25,
                                        debug=0)
         self.tag_size = tag_size
+        self.calibrator = calibrator
 
-    def detect(self, img, calibration: Calibrator = None):
+    def detect(self, img, calibration: Optional[Calibrator] = None):
+        cal = None
+        if self.calibrator is not None:
+            cal = self.calibrator
         if calibration is not None:
+            cal = calibration
+        
+        if cal is not None:
             if self.tag_size is None:
                 print("No tag size set, cannot estimate pose")
             return self.at_detector.detect(img,
                                            estimate_tag_pose=True,
-                                           camera_params=calibration.get_camera_params(),
+                                           camera_params=cal.get_camera_params(),
                                            tag_size=self.tag_size)
         return self.at_detector.detect(img)
 
     @staticmethod
-    def overlay_tags(img, tags, output_filename=None):
-        color_img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+    def overlay_tags(img, tags, output_filename=None, input_color=False, show=False):
+        color_img = img if input_color else cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
 
         for tag in tags:
             for idx in range(len(tag.corners)):
@@ -44,13 +52,13 @@ class Detector:
                         fontFace=cv2.FONT_HERSHEY_SIMPLEX,
                         fontScale=0.8,
                         color=(0, 0, 255))
-        output_path = os.path.join('../output', output_filename)
         if output_filename is None:
-            cv2.imshow(f'Detected tags for image {output_path}', cv2.resize(color_img, (540, 960)))
-            cv2.waitKey(0)
-            sleep(2)
-            cv2.destroyAllWindows()
+            if show:
+                cv2.imshow(f'Detected tags for image', cv2.resize(color_img, (540, 960)))
+                cv2.waitKey(0)
+                sleep(2)
         else:
+            output_path = os.path.join('../output', output_filename)
             output_dir = os.path.dirname(output_path)
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)

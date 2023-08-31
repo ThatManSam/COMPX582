@@ -24,6 +24,12 @@ class Calibrator:
         self.dist != None and \
         self.rot_vecs != None and \
         self.tran_vecs != None
+        
+    def __str__(self):
+        return f"Camera_matrix: {self.camera_matrix}\n" \
+               f"Dist: {self.dist}\n" \
+               f"Rot_vecs: {self.rot_vecs}\n" \
+               f"Tran_vecs: {self.tran_vecs}\n" \
 
     def save_calibration(self, filename):
         with open(filename, 'wb') as file:
@@ -68,6 +74,8 @@ class Calibrator:
                 for attempt in range(3):
                     try:
                         img = cam.get_image()
+                        if img is None:
+                            continue
                         images.append(img)
                         scale = 0.5
                         cv2.imshow('Image', cv2.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale))))
@@ -123,7 +131,7 @@ class Calibrator:
         print("total error: {}".format(mean_error / len(obj_points)))
 
     def undistort_image(self, image):
-        if not self.ret:
+        if not self.ret or not self.camera_matrix or not self.dist:
             print("Not Calibrated, can't undistort image")
             return
         img = cv2.imread(image)
@@ -148,6 +156,9 @@ class Calibrator:
         cv2.imwrite('undistorted1.jpg', dst)
 
     def get_camera_params(self):
+        if not self.camera_matrix:
+            print("No camera parameters are set")
+            return None
         fx = self.camera_matrix[0][0]
         fy = self.camera_matrix[1][1]
         cx = self.camera_matrix[0][2]
@@ -166,6 +177,8 @@ def calibrate_distance(camera=None, known_distance=-1, filename=None):
         for attempt in range(3):
             try:
                 image = cam.get_image()
+                if image is None:
+                    continue
                 scale = 50
                 cv2.imshow('Image', cv2.resize(image, (image.shape[1] * scale / 100, image.shape[0] * scale / 100)))
                 cv2.waitKey(2000)
@@ -184,7 +197,7 @@ def calibrate_distance(camera=None, known_distance=-1, filename=None):
             except ValueError:
                 print("Please enter a number")
 
-    img = cv2.imread(image) if type(image) is str else image
+    # img = cv2.imread(image) if type(image) is str else image
 
 
 if __name__ == "__main__":
