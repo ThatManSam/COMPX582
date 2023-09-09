@@ -37,7 +37,7 @@ cv2.destroyAllWindows()
 tag_size = 0.04     # 4 cm
 # calibrator = Calibrator()
 print("Loading calibration")
-calibrator = Calibrator.load_calibration('calibration_10.pickle')
+calibrator = Calibrator.load_calibration('calibration_20.pickle')
 print(str(calibrator))
 # calibrator.calibrate(filename_format='images/calibrate*.jpg')
 detector = Detector(tag_size)
