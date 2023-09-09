@@ -16,18 +16,24 @@ else
     URL=https://www.baslerweb.com/fp-1668420813/media/downloads/software/pylon_software/pylon_7.2.1.25747_x86_64_debs.tar.gz
 fi
 
+DOWNLOAD_FILE=pylon.tar.gz
+
 echo "/Downloading Pylon for $platform from $URL"
-curl -L -v $URL -H "Content-Type: application/x-gzip" --output pylon.tar.gz
+curl -L $URL -H "Content-Type: application/x-gzip" --output $DOWNLOAD_FILE
 check_response "Pylon Download"
 
 echo "/Extracting files"
-tar -xf pylon.tar.gz
+tar -xf $DOWNLOAD_FILE
 check_response "Extracting Files"
 
 echo "/Installing .deb packages"
-dpkg -i ./pylon*.deb
+sudo dpkg -i ./pylon*.deb
 check_response "Installing .deb packages"
 
 echo "/Running setup script"
 /opt/pylon/bin/pylon-setup-env.sh
 check_response "Setup script"
+
+echo "Cleaning up files"
+rm -f $DOWNLOAD_FILE pylon*.deb codemeter*.deb INSTALL
+check_response "Removing Files"
