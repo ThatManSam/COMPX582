@@ -26,9 +26,15 @@ def ReceiveImages(image):
         # Don't store old images
         pass
 
-def ProcessImages(det: Detector, term=None):
-    while not rospy.is_shutdown():
-        image = image_queue.get()
+def ProcessImages(det: Detector, term=None, stop_event=None):
+    if not stop_event:
+        stop_event = threading.Event()
+    
+    while not stop_event.is_set():
+        try:
+            image = image_queue.get(timeout=1)
+        except queue.Empty:
+            continue
         term = term
         detector: Detector = det
         
@@ -144,8 +150,7 @@ def calculate_direction():
     pass
     
 if __name__ == '__main__':
-    rospy.init_node("test_get_camera")
-    rospy.loginfo("[PLAIN PY NODE] namespace of node = " + rospy.get_namespace())
+    rospy.init_node("test_get_camera", disable_signals=True)
 
     print(f"CWD {os.getcwd()}")
     # img = cv.imread('../../images/calibrate1.jpg')
@@ -167,10 +172,15 @@ if __name__ == '__main__':
     # term = None
     with term.fullscreen(), term.cbreak():
         rospy.Subscriber("/baslerimages", ImageBundle, ReceiveImages)
-        
-        thread = threading.Thread(target=ProcessImages, args=(detector, term))
+        event = threading.Event()
+        thread = threading.Thread(target=ProcessImages, args=(detector, term, event))
         thread.start()
-        # rospy.spin()
-        thread.join()
-        rospy.signal_shutdown("Closing")
+        try:
+            event.wait()
+        except KeyboardInterrupt:
+            event.set()
+    print("Closing")
+    thread.join()
+    rospy.signal_shutdown("Closing")
+    
     cv.destroyAllWindows()
