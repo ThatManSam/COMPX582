@@ -20,10 +20,7 @@ class Calibrator:
         self.rot_vecs = rot_vecs
         self.tran_vecs = tran_vecs
         
-        self.ret = self.camera_matrix != None and \
-        self.dist != None and \
-        self.rot_vecs != None and \
-        self.tran_vecs != None
+        self.ret = self.camera_matrix is not None and self.dist is not None
         
     def __str__(self):
         return f"Camera_matrix: {self.camera_matrix}\n" \
@@ -156,7 +153,7 @@ class Calibrator:
         cv2.imwrite('undistorted1.jpg', dst)
 
     def get_camera_params(self):
-        if not self.camera_matrix:
+        if self.camera_matrix is None:
             print("No camera parameters are set")
             return None
         fx = self.camera_matrix[0][0]
