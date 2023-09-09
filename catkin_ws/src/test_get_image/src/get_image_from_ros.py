@@ -70,21 +70,30 @@ def ProcessImages(det: Detector, term=None):
                         x = tag.pose_t[0][-1]/100
                         y = tag.pose_t[1][-1]/100
                         z = tag.pose_t[2][-1]/100
-                        x_rounded = int(round(x))
-                        y_rounded = int(round(y))
-                        z_rounded = int(round(z))
                         dist = sqrt(x**2 + y**2 + z**2)
                         
                         # Extract the first row (or first column) of the rotation matrix
                         camera_orientation = tag.pose_R[0, :]
 
                         # Calculate the angle left or right (in radians) relative to the camera's orientation
-                        angle_left_right = np.degrees(np.arctan2(camera_orientation[2], camera_orientation[0]))
+                        angle_left_right = np.arctan2(camera_orientation[2], camera_orientation[0])
+                        
+                        angle_left_right_degrees =  np.degrees(angle_left_right)
 
+                        x_adjusted = z * np.sin(angle_left_right)
+                        z_adjusted = z * np.cos(angle_left_right)
+
+                        # x_rounded = int(round(x))
+                        x_rounded = int(round(x_adjusted))
+                        y_rounded = int(round(y))
+                        # z_rounded = int(round(z))
+                        z_rounded = int(round(z_adjusted))
+                        
                         # Center the status page
                         with term.location(0, term.height // 2 - 5):
                             # Display right/left distance (90 degrees to forward)
-                            print(term.center(f"Right/Left Distance: {x} m"))
+                            # print(term.center(f"Right/Left Distance: {x:.3f} m ({x_adjusted:.3f})"))
+                            print(term.center(f"Right/Left Distance: {x_adjusted:.3f} m ({x:.3f})"))
                             
                             x_scaled = x_rounded*2
                             # Create a horizontal line of "-" for the forward distance
@@ -93,7 +102,8 @@ def ProcessImages(det: Detector, term=None):
                             # Create vertical lines of "|" for the right/left distance
                             for _ in range(z_rounded):
                                 print(term.center("|"))
-                            print(term.center(f"Forward Distance: {z} m"))
+                            # print(term.center(f"Forward Distance: {z:.3f} m ({z_adjusted:.3f})"))
+                            print(term.center(f"Forward Distance: {z_adjusted:.3f} m ({z:.3f})"))
                             print(term.center(f"Angle (degs): {angle_left_right: .2f}°"))
                     for tag in tags:
                         if tag.pose_t is not None:
