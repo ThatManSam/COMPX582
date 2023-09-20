@@ -73,6 +73,26 @@ def ProcessImages(det: Detector, term=None, stop_event=None):
                 else:
                     tag = tags[0]
                     if tag.pose_t is not None:
+                        if det.calibrator is not None:
+                            # Draw the vectors
+                            axis = np.float32([[3,0,0], [0,3,0], [0,0,-3]]).reshape(-1,3) # type: ignore
+            
+                            imgpts, jac = cv.projectPoints(axis, tag.pose_R, tag.pose_t, det.calibrator.camera_matrix, det.calibrator.dist)
+
+                            def draw(img, corners, imgpts):
+                                def to_int(x):
+                                    return int(x)
+                                
+                                corner = tuple(corners[0].ravel())
+                                corner = tuple(map(lambda p: int(p), corner))
+                                print(f"Point to print: {corner}")
+                                img = cv.line(img, corner, tuple(map(to_int, imgpts[2].ravel())), (0,0,255), 5)
+                                img = cv.line(img, corner, tuple(map(to_int, imgpts[0].ravel())), (255,0,0), 5)
+                                img = cv.line(img, corner, tuple(map(to_int, imgpts[1].ravel())), (0,255,0), 5)
+                                return img
+                                
+                            overlayed = draw(overlayed,tag.corners,imgpts)
+                            
                         x = tag.pose_t[0][-1]/100
                         y = tag.pose_t[1][-1]/100
                         z = tag.pose_t[2][-1]/100
@@ -82,13 +102,16 @@ def ProcessImages(det: Detector, term=None, stop_event=None):
                         camera_orientation = tag.pose_R[0, :]
 
                         # Calculate the angle left or right (in radians) relative to the camera's orientation
-                        angle_left_right = np.arctan2(camera_orientation[2], camera_orientation[0])
+                        angle_left_right = np.arccos(camera_orientation[0])
+                        
+                        rot_calced = [[f"{np.degrees(np.arccos(ang)): .2f}°" for ang in row] for row in tag.pose_R]
+                        
                         
                         angle_left_right_degrees =  np.degrees(angle_left_right)
 
-                        x_adjusted = z * np.sin(angle_left_right)
-                        z_adjusted = z * np.cos(angle_left_right)
-
+                        # x_adjusted = z * np.sin(angle_left_right)
+                        # z_adjusted = z * np.cos(angle_left_right)
+                        x_adjusted, z_adjusted = calculate_adjustment(z, x, angle_left_right)
                         # x_rounded = int(round(x))
                         x_rounded = int(round(x_adjusted))
                         y_rounded = int(round(y))
@@ -110,7 +133,9 @@ def ProcessImages(det: Detector, term=None, stop_event=None):
                                 print(term.center("|"))
                             # print(term.center(f"Forward Distance: {z:.3f} m ({z_adjusted:.3f})"))
                             print(term.center(f"Forward Distance: {z_adjusted:.3f} m ({z:.3f})"))
-                            print(term.center(f"Angle (degs): {angle_left_right: .2f}°"))
+                            print(term.center(f"Angle (degs): {angle_left_right_degrees: .2f}°"))
+                            # print(term.center(f"Angles (degs): X: {rot_x: .2f}° Y: {rot_y: .2f}° Z: {rot_z: .2f}°"))
+                            print(term.center(f"Angles\n{rot_calced[0]}\n{rot_calced[1]}\n{rot_calced[2]}\n"))
                     for tag in tags:
                         if tag.pose_t is not None:
                             x = tag.pose_t[0][-1]
@@ -148,6 +173,20 @@ def ProcessImages(det: Detector, term=None, stop_event=None):
         
 def calculate_direction():
     pass
+
+def calculate_adjustment(a, b, angle) -> tuple:
+    # Calculating camera position based on marker perspective
+
+    t = b/np.tan((np.pi/2) - angle)
+    s = a - t
+    y = s * np.cos(angle)
+    
+    # Similar triangles
+    p = b*s/y
+    q = y*t/b
+    
+    x = p+q
+    return x, y
     
 if __name__ == '__main__':
     rospy.init_node("test_get_camera", disable_signals=True)
