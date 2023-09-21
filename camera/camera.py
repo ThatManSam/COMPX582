@@ -22,8 +22,7 @@ class Camera:
                 break
 
         if camera_device is None:
-            print('Could not select camera')
-            return
+            raise Exception('Could not select camera')
 
         print(f'Selected camera {camera_device.GetModelName()} {camera_device.GetSerialNumber()}')
 
@@ -49,7 +48,7 @@ class Camera:
             self.camera.GainAuto = 'Off'
             self.camera.GainRaw = 100
             self.camera.ExposureAuto = 'Off'
-            self.camera.ExposureTimeRaw = 100000
+            self.camera.ExposureTimeRaw = 10000
         self.camera.BalanceWhiteAuto = 'Continuous'
         # print(self.camera.PixelFormat.Symbolics)
         self.camera.PixelFormat = 'BayerRG8' if self.color else 'Mono8'

@@ -29,5 +29,5 @@ dpkg -i ./pylon*.deb
 check_response "Installing .deb packages"
 
 echo "/Running setup script"
-/opt/pylon/bin/pylon-setup-env.sh
+export /opt/pylon/bin/pylon-setup-env.sh /opt/pylon
 check_response "Setup script"
