@@ -6,7 +6,7 @@
         "limitSymbolsToIncludedHeaders": false
       },
       "includePath": [
-        "/home/joelshep/documents/university/COMPX582/camera/catkin_ws/devel/include/**",
+        "/home/joelshep/documents/university/ENGEN582/camera/catkin_ws/devel/include/**",
         "/opt/ros/noetic/include/**",
         "/usr/include/**"
       ],
