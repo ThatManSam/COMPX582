@@ -13,8 +13,79 @@ import rospy
 import queue
 import cv2 as cv
 
+from simple_pid import PID
+from geometry_msgs.msg import Twist
 from camera.detector import Detector
 from camera.calibrate import Calibrator
+
+class Driver:
+    def __init__(self, publisher: rospy.Publisher, Kp, Ki, Kd, active=True) -> None:
+        if active and publisher is None:
+            raise ValueError("Cannot have active driver without publisher")
+        self.pub = publisher
+        self.last_x = 0
+        self.last_z = 0
+        self.active = active
+        
+        self.pid = PID(Kp, Ki, Kd)
+        
+        self._diff_check_thresh = 0.5 # 0.5 a metre
+        
+        self.MAX_SPEED = 1.0
+        self.MAX_TURN = 0.5
+        self.STOP_DIST = 2
+        
+    def _stabalise_sign(self, x, z):
+        stab_x = x
+        if x > self._diff_check_thresh:
+            diff = abs(x - self.last_x)
+            if diff > abs(max(x, self.last_x)):
+                stab_x = -x
+                
+        stab_z = z
+        if z > self._diff_check_thresh:
+            diff = abs(z - self.last_z)
+            if diff > abs(max(x, self.last_z)):
+                stab_z = -z
+        
+        return stab_x, stab_z
+        
+    def receive_telemetry(self, side, forward):
+        real_side, real_forward = self._stabalise_sign(side, forward)
+        if real_forward < self.STOP_DIST:
+            self.update_drive(0, 0)
+            return
+        pid_turn = self.pid(real_side)
+        if pid_turn is None:
+            print('Error with PID calucation')
+            return
+        pid_forward = self.MAX_SPEED - pid_turn
+        self.update_drive(pid_forward, pid_turn)
+        
+    def update_drive(self, forward, turn):
+        self.twist = self._create_twist(forward, turn)
+        if self.active:
+            self.pub.publish(self.twist)
+        else:
+            print(repr(self))
+        
+    def _create_twist(self, forward, turn) -> Twist:
+        t = Twist()
+        t.linear.x = forward
+        t.angular.z = turn
+        return t
+    
+    def __repr__(self) -> str:
+        return (
+            'linear:'
+            '  x: {self.twist.linear.x}'
+            '  y: {self.twist.linear.y}'
+            '  z: {self.twist.linear.z}'
+            'angular:'
+            '  x: {self.twist.linear.x}'
+            '  y: {self.twist.linear.y}'
+            '  z: {self.twist.linear.z}'
+        ).format(self=self)
 
 window_name = "Camera Test"
 
@@ -142,8 +213,10 @@ def calc_pose_opencv(tag, det, image, term=None):
         area = calc_area(tag.corners)
         # show_stats(term, x_rounded, z_rounded, x_adjusted, z_adjusted, x, z, angle_left_right_degrees, rot_calced, area, other_calced)
         show_stats(term, x, z, area)
+        return x, y, z, area
     else:
         print("Can't calculate pose")
+        return None, None, None, None
         
 
 def calc_area(c):
@@ -189,7 +262,7 @@ def draw_vectors(tag, det, img):
     overlayed = draw(img,tag.corners,imgpts)
     return overlayed
 
-def ProcessImages(det: Detector, term=None, stop_event=None, ros=True):
+def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros=True, active_output=False):
     if not stop_event:
         stop_event = threading.Event()
     
@@ -222,13 +295,15 @@ def ProcessImages(det: Detector, term=None, stop_event=None, ros=True):
                 if len(tags) == 0:
                     print("No Tags Found")
                 else:
-                    calc_pose_opencv(tags[0], det, overlayed, term)
-                    
                     for tag in tags:
                         if tag.pose_t is not None:
-                            x = tag.pose_t[0][-1]
-                            y = tag.pose_t[1][-1]
-                            z = tag.pose_t[2][-1]
+                            x, y, z, area = calc_pose_opencv(tag, det, overlayed, term)
+                            if x is None or y is None or z is None or area is None:
+                                continue
+                            driver.receive_telemetry(x, z)
+                            # x = tag.pose_t[0][-1]
+                            # y = tag.pose_t[1][-1]
+                            # z = tag.pose_t[2][-1]
                             dist = sqrt(x**2 + y**2 + z**2)
                             print(f"\rTime: {image.header.stamp.secs if ros else 'None'}, ID: {tag.tag_id}, {f'Distance: F {z: .2f} R {x: .2f} Abs {dist.real: .2f}cm' if dist is not None else ''}{' '*20}", end="")
                             # print(f"ID: {tag.tag_id}, Distance: {dist}")
@@ -238,19 +313,23 @@ def ProcessImages(det: Detector, term=None, stop_event=None, ros=True):
                 print(f"\rNo Tags Found, Time: {image.header.stamp.secs if ros else 'None'}" + " "*40, end="")
             for tag in tags:
                 if tag.pose_t is not None:
-                    x = tag.pose_t[0][-1]
-                    y = tag.pose_t[1][-1]
-                    z = tag.pose_t[2][-1]
+                    x, y, z, area = calc_pose_opencv(tag, det, overlayed, term)
+                    if x is None or y is None or z is None or area is None:
+                        continue
+                    driver.receive_telemetry(x, z)
+                    # x = tag.pose_t[0][-1]
+                    # y = tag.pose_t[1][-1]
+                    # z = tag.pose_t[2][-1]
                     dist = sqrt(x**2 + y**2 + z**2)
-                    # Extract the first row (or first column) of the rotation matrix
-                    camera_orientation = tag.pose_R[0, :]
+                    # # Extract the first row (or first column) of the rotation matrix
+                    # camera_orientation = tag.pose_R[0, :]
 
-                    # Calculate the angle left or right (in radians) relative to the camera's orientation
-                    angle_left_right = np.arctan2(camera_orientation[2], camera_orientation[0])
+                    # # Calculate the angle left or right (in radians) relative to the camera's orientation
+                    # angle_left_right = np.arctan2(camera_orientation[2], camera_orientation[0])
 
-                    # Convert the angle from radians to degrees
-                    angle_left_right_degrees = np.degrees(angle_left_right)
-                    print(f"\rTime: {image.header.stamp.secs if ros else 'None'}, ID: {tag.tag_id}, {f'Distance: F {z: .2f} R {x: .2f} Abs {dist.real: .2f}cm' if dist is not None else ''}{' '*20} Angle {angle_left_right_degrees}°", end="")
+                    # # Convert the angle from radians to degrees
+                    # angle_left_right_degrees = np.degrees(angle_left_right)
+                    print(f"\rTime: {image.header.stamp.secs if ros else 'None'}, ID: {tag.tag_id}, {f'Distance: F {z: .2f} R {x: .2f} Abs {dist.real: .2f}cm' if dist is not None else ''}{' '*20}", end="")
                     # print(f"ID: {tag.tag_id}, Distance: {dist}")
                 else:
                     print("No pose estimated")
@@ -296,14 +375,28 @@ def run_ros():
     calibration = Calibrator(camera_matrix, dist=dist_coeffs)
     detector = Detector(14, calibrator=calibration)
 
+    pub = rospy.Publisher("/twist", Twist)
+
+    driver = Driver(pub, 1, 1, 1, False)
+
     print("Ready")
 
     term = Terminal()
     # term = None
-    with term.fullscreen(), term.cbreak():
+    if term is not None:
+        with term.fullscreen(), term.cbreak():
+            rospy.Subscriber("/baslerimages", ImageBundle, ReceiveImages)
+            event = threading.Event()
+            thread = threading.Thread(target=ProcessImages, args=(detector, driver, term, event))
+            thread.start()
+            try:
+                event.wait()
+            except KeyboardInterrupt:
+                event.set()
+    else:
         rospy.Subscriber("/baslerimages", ImageBundle, ReceiveImages)
         event = threading.Event()
-        thread = threading.Thread(target=ProcessImages, args=(detector, term, event))
+        thread = threading.Thread(target=ProcessImages, args=(detector, driver, term, event))
         thread.start()
         try:
             event.wait()
