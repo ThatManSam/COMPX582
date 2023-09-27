@@ -19,7 +19,7 @@ from camera.detector import Detector
 from camera.calibrate import Calibrator
 
 class Driver:
-    def __init__(self, publisher: rospy.Publisher, Kp, Ki, Kd, active=True) -> None:
+    def __init__(self, publisher: rospy.Publisher, Kp, Ki, Kd, target, active=True) -> None:
         if active and publisher is None:
             raise ValueError("Cannot have active driver without publisher")
         self.pub = publisher
@@ -27,42 +27,46 @@ class Driver:
         self.last_z = 0
         self.active = active
         
-        self.pid = PID(Kp, Ki, Kd)
+        self.pid = PID(Kp, Ki, Kd, setpoint=target)
         
         self._diff_check_thresh = 0.5 # 0.5 a metre
         
         self.MAX_SPEED = 1.0
         self.MAX_TURN = 0.5
         self.STOP_DIST = 2
+        self.RATIO_TURN_SPEED = 0.5
         
-    def _stabalise_sign(self, x, z):
-        stab_x = x
-        if x > self._diff_check_thresh:
-            diff = abs(x - self.last_x)
-            if diff > abs(max(x, self.last_x)):
-                stab_x = -x
+    def _stabalise_sign(self, side, forward):
+        stab_side = side
+        if side > self._diff_check_thresh:
+            diff = abs(side - self.last_x)
+            if diff > abs(max(side, self.last_x)):
+                stab_side = -side
                 
-        stab_z = z
-        if z > self._diff_check_thresh:
-            diff = abs(z - self.last_z)
-            if diff > abs(max(x, self.last_z)):
-                stab_z = -z
+        stab_forward = abs(forward) # Forward is always positive (cart can't look backwardss)
         
-        return stab_x, stab_z
+        return stab_side, stab_forward
         
     def receive_telemetry(self, side, forward):
+        print(f"Input: side: {side} for: {forward}")
         real_side, real_forward = self._stabalise_sign(side, forward)
+        print(f"Stabalised: side: {real_side} for: {real_forward}")
         if real_forward < self.STOP_DIST:
             self.update_drive(0, 0)
             return
-        pid_turn = self.pid(real_side)
-        if pid_turn is None:
+        pid_side = self.pid(real_side)
+        print(f"Direct PID out: {pid_side}")
+        if pid_side is None:
             print('Error with PID calucation')
             return
-        pid_forward = self.MAX_SPEED - pid_turn
+        pid_turn = (pid_side - self.pid.setpoint)*self.MAX_TURN
+        pid_turn = max(pid_turn, self.MAX_TURN)
+        pid_forward = self.MAX_SPEED - pid_turn*self.RATIO_TURN_SPEED
+        
         self.update_drive(pid_forward, pid_turn)
         
     def update_drive(self, forward, turn):
+        print(f"PID output: f: {forward} | t: {turn}")
         self.twist = self._create_twist(forward, turn)
         if self.active:
             self.pub.publish(self.twist)
@@ -77,14 +81,8 @@ class Driver:
     
     def __repr__(self) -> str:
         return (
-            'linear:'
-            '  x: {self.twist.linear.x}'
-            '  y: {self.twist.linear.y}'
-            '  z: {self.twist.linear.z}'
-            'angular:'
-            '  x: {self.twist.linear.x}'
-            '  y: {self.twist.linear.y}'
-            '  z: {self.twist.linear.z}'
+            'linear: {self.twist.linear.x}\n'
+            'angular: {self.twist.angular.z}'
         ).format(self=self)
 
 window_name = "Camera Test"
@@ -233,8 +231,22 @@ def calc_area(c):
     area = abs(0.5 * ((x1*y2-x2*y1) + (x2*y3-x3*y2) + (x3*y4-x4*y3) + (x4*y1-x1*y4)))
     return area
 
-def calc_pose_tag(tag, image):
-    pass
+def calc_pose_dist(tag, image, term=None):
+    if tag.pose_t is not None:
+        x = tag.pose_t[0][-1]/100
+        y = tag.pose_t[1][-1]/100
+        z = tag.pose_t[2][-1]/100
+        
+        dist = sqrt(x**2 + y**2 + z**2)
+        
+        middle = image.shape[0]/2
+        
+        pos = (tag.corners[0, 0] + tag.corners[2, 0])/2
+        
+        error = middle - pos
+        area = calc_area(tag.corners)
+        return error, dist, area
+    return None, None, None
 
 def invert_matrices(t, R):
     R_inv = np.linalg.inv(R)
@@ -262,7 +274,7 @@ def draw_vectors(tag, det, img):
     overlayed = draw(img,tag.corners,imgpts)
     return overlayed
 
-def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros=True, active_output=False):
+def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros=True, active_output=False, straight=False, area=False):
     if not stop_event:
         stop_event = threading.Event()
     
@@ -297,16 +309,27 @@ def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros
                 else:
                     for tag in tags:
                         if tag.pose_t is not None:
-                            x, y, z, area = calc_pose_opencv(tag, det, overlayed, term)
-                            if x is None or y is None or z is None or area is None:
-                                continue
-                            driver.receive_telemetry(x, z)
-                            # x = tag.pose_t[0][-1]
-                            # y = tag.pose_t[1][-1]
-                            # z = tag.pose_t[2][-1]
-                            dist = sqrt(x**2 + y**2 + z**2)
-                            print(f"\rTime: {image.header.stamp.secs if ros else 'None'}, ID: {tag.tag_id}, {f'Distance: F {z: .2f} R {x: .2f} Abs {dist.real: .2f}cm' if dist is not None else ''}{' '*20}", end="")
-                            # print(f"ID: {tag.tag_id}, Distance: {dist}")
+                            if straight:
+                                side, dist, area = calc_pose_dist(tag, overlayed, term)
+                                if side is None or dist is None or area is None:
+                                    continue
+                                if area:
+                                    driver.receive_telemetry(side, area)
+                                    print(f"\rID: {tag.tag_id}, Distance: Area {area: .2f} Side {side: .2f}{' '*20}", end="")
+                                else:
+                                    driver.receive_telemetry(side, dist)
+                                    print(f"\rID: {tag.tag_id}, Distance: Abs {dist: .2f} Side {side: .2f}{' '*20}", end="")
+                            else:
+                                x, y, z, area = calc_pose_opencv(tag, det, overlayed, term)
+                                if x is None or y is None or z is None or area is None:
+                                    continue
+                                driver.receive_telemetry(x, z)
+                                # x = tag.pose_t[0][-1]
+                                # y = tag.pose_t[1][-1]
+                                # z = tag.pose_t[2][-1]
+                                dist = sqrt(x**2 + y**2 + z**2)
+                                print(f"\rTime: {image.header.stamp.secs if ros else 'None'}, ID: {tag.tag_id}, {f'Distance: F {z: .2f} R {x: .2f} Abs {dist.real: .2f}cm' if dist is not None else ''}{' '*20}", end="")
+                                # print(f"ID: {tag.tag_id}, Distance: {dist}")
                     
         else:
             if len(tags) == 0:
@@ -375,9 +398,9 @@ def run_ros():
     calibration = Calibrator(camera_matrix, dist=dist_coeffs)
     detector = Detector(14, calibrator=calibration)
 
-    pub = rospy.Publisher("/twist", Twist)
+    pub = rospy.Publisher("/twist", Twist, queue_size=1)
 
-    driver = Driver(pub, 1, 1, 1, False)
+    driver = Driver(pub, 0.5, 0.2, 0.1, 2, False)
 
     print("Ready")
 
@@ -387,7 +410,15 @@ def run_ros():
         with term.fullscreen(), term.cbreak():
             rospy.Subscriber("/baslerimages", ImageBundle, ReceiveImages)
             event = threading.Event()
-            thread = threading.Thread(target=ProcessImages, args=(detector, driver, term, event))
+            thread = threading.Thread(
+                target=ProcessImages,
+                args=(detector, driver, term, event),
+                kwargs={
+                    'ros':True,
+                    'active_output':False,
+                    'straight':False,
+                    'area':False}
+                )
             thread.start()
             try:
                 event.wait()
@@ -396,7 +427,15 @@ def run_ros():
     else:
         rospy.Subscriber("/baslerimages", ImageBundle, ReceiveImages)
         event = threading.Event()
-        thread = threading.Thread(target=ProcessImages, args=(detector, driver, term, event))
+        thread = threading.Thread(
+            target=ProcessImages,
+            args=(detector, driver, term, event),
+            kwargs={
+                'ros':True,
+                'active_output':False,
+                'straight':False,
+                'area':False}
+            )
         thread.start()
         try:
             event.wait()
