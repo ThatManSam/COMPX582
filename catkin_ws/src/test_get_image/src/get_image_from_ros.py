@@ -31,8 +31,11 @@ class Driver:
         
         self._diff_check_thresh = 0.5 # 0.5 a metre
         
+        self.FACTOR_SPEED = 1
+        self.FACTOR_TURN = 1
+        
         self.MAX_SPEED = 1.0
-        self.MAX_TURN = 0.5
+        self.MAX_TURN = 1.0
         self.STOP_DIST = 2
         self.RATIO_TURN_SPEED = 0.5
         
@@ -48,26 +51,30 @@ class Driver:
         return stab_side, stab_forward
         
     def receive_telemetry(self, side, forward):
-        print(f"Input: side: {side} for: {forward}")
         real_side, real_forward = self._stabalise_sign(side, forward)
-        print(f"Stabalised: side: {real_side} for: {real_forward}")
+        print(f"Stabalised: side: {real_side:.3f} for: {real_forward:.3f}")
         if real_forward < self.STOP_DIST:
             self.update_drive(0, 0)
             return
         pid_side = self.pid(real_side)
-        print(f"Direct PID out: {pid_side}")
+        print(f"Direct PID out: {pid_side:.3f}")
         if pid_side is None:
             print('Error with PID calucation')
             return
         pid_turn = (pid_side - self.pid.setpoint)*self.MAX_TURN
-        pid_turn = max(pid_turn, self.MAX_TURN)
+        if pid_turn > 0:
+            pid_turn = min(pid_turn, self.MAX_TURN)
+        else:
+            pid_turn = max(pid_turn, -self.MAX_TURN)
         pid_forward = self.MAX_SPEED - pid_turn*self.RATIO_TURN_SPEED
         
         self.update_drive(pid_forward, pid_turn)
         
     def update_drive(self, forward, turn):
-        print(f"PID output: f: {forward} | t: {turn}")
-        self.twist = self._create_twist(forward, turn)
+        f_forward = forward * self.FACTOR_SPEED
+        f_turn = turn * self.FACTOR_TURN
+        print(f"Sending output: f: {f_forward:.3f} | t: {f_turn:.3f}")
+        self.twist = self._create_twist(f_forward, f_turn)
         if self.active:
             self.pub.publish(self.twist)
         else:
@@ -81,8 +88,8 @@ class Driver:
     
     def __repr__(self) -> str:
         return (
-            'linear: {self.twist.linear.x}\n'
-            'angular: {self.twist.angular.z}'
+            'linear: {self.twist.linear.x:.3f}\n'
+            'angular: {self.twist.angular.z:.3f}'
         ).format(self=self)
 
 window_name = "Camera Test"
@@ -400,7 +407,8 @@ def run_ros():
 
     pub = rospy.Publisher("/twist", Twist, queue_size=1)
 
-    driver = Driver(pub, 0.5, 0.2, 0.1, 2, False)
+    driver = Driver(pub, 0.2, 0.05, 0.02, 4, False) # OpenCV
+    # driver = Driver(pub, 0.5, 0.2, 0.1, 2, False) # Other
 
     print("Ready")
 
