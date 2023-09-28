@@ -19,9 +19,9 @@ from camera.detector import Detector
 from camera.calibrate import Calibrator
 
 class Driver:
-    def __init__(self, publisher: rospy.Publisher, Kp, Ki, Kd, target, active=True) -> None:
-        if active and publisher is None:
-            raise ValueError("Cannot have active driver without publisher")
+    def __init__(self, Kp, Ki, Kd, target, active=True, publisher: Optional[rospy.Publisher]=None, serial=None) -> None:
+        if active and publisher is None and serial is None:
+            raise ValueError("Cannot have active driver without publisher or serial")
         self.pub = publisher
         self.last_x = 0
         self.last_z = 0
@@ -94,7 +94,7 @@ class Driver:
 
 window_name = "Camera Test"
 
-image_queue = queue.Queue(2)
+image_queue = queue.Queue(1)
 
 term: Optional[Terminal] = None
 
@@ -407,8 +407,8 @@ def run_ros():
 
     pub = rospy.Publisher("/twist", Twist, queue_size=1)
 
-    driver = Driver(pub, 0.2, 0.05, 0.02, 4, False) # OpenCV
-    # driver = Driver(pub, 0.5, 0.2, 0.1, 2, False) # Other
+    driver = Driver(0.2, 0.05, 0.02, 4, False, pub) # OpenCV
+    # driver = Driver(0.5, 0.2, 0.1, 2, False, pub) # Other
 
     print("Ready")
 
@@ -475,6 +475,11 @@ def run_local():
     camera_matrix = np.array(camera_config['camera_matrix']['data']).reshape(3, 3)
     dist_coeffs = np.array(camera_config['distortion_coefficients']['data'])
     
+    pub=None
+    
+    driver = Driver(0.2, 0.05, 0.02, 4, False, pub) # OpenCV
+    # driver = Driver(0.5, 0.2, 0.1, 2, False, pub) # Other
+    
     calibration = Calibrator(camera_matrix, dist=dist_coeffs)
     detector = Detector(14, calibrator=calibration)
     term = Terminal()
@@ -482,7 +487,7 @@ def run_local():
     with term.fullscreen(), term.cbreak():        
         event = threading.Event()
         print("Starting processing")
-        process_thread = threading.Thread(target=ProcessImages, args=(detector, term, event, False))
+        process_thread = threading.Thread(target=ProcessImages, args=(detector, driver, term, event, False))
         process_thread.start()
         print("Starting Capture")
         capture_thread = threading.Thread(target=continuous_camera_capture, args=(event,))
@@ -496,5 +501,5 @@ def run_local():
     capture_thread.join()
 
 if __name__ == '__main__':
-    run_ros()
-    # run_local()
+    # run_ros()
+    run_local()
