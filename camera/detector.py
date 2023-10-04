@@ -11,7 +11,7 @@ from camera.camera import Camera
 
 
 class Detector:
-    def __init__(self, tag_size: Optional[int] = None, calibrator: Optional[Calibrator] = None):
+    def __init__(self, tag_size: Optional[float] = None, calibrator: Optional[Calibrator] = None):
         self.at_detector = at_Detector(families='tagStandard52h13',
                                        nthreads=1,
                                        quad_decimate=1.0,

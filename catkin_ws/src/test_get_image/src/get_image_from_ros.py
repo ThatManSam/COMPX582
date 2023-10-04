@@ -47,7 +47,8 @@ class Driver:
                 stab_side = -side
                 
         stab_forward = abs(forward) # Forward is always positive (cart can't look backwardss)
-        
+        self.last_x = stab_side
+        self.last_z = stab_forward
         return stab_side, stab_forward
         
     def receive_telemetry(self, side, forward):
@@ -121,6 +122,7 @@ def obtain_image(image):
 
     # Convert the image array to uint8 type (expected by OpenCV)
     img_uint8 = np.uint8(img_array)
+    # cv.imwrite("ROS_INPUT.jpg", img_uint8)
     img_flipped = cv.rotate(img_uint8, cv.ROTATE_180) # type: ignore
     # print(f'Width: {img.width} | Height: {img.height} | Data Count: {len(img.data)} | Encoding: {img.encoding} | Shape: {img_flipped.shape}')
     return img_flipped
@@ -295,6 +297,7 @@ def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros
         if ros:
             img_flipped = obtain_image(image)
             bw_image = cv.cvtColor(img_flipped, cv.COLOR_BGR2GRAY)
+            # cv.imwrite("ROS_PROCESSED.jpg", bw_image)
         else:
             img_flipped = image
             bw_image = image
@@ -476,7 +479,7 @@ def run_local():
     dist_coeffs = np.array(camera_config['distortion_coefficients']['data'])
     
     calibration = Calibrator(camera_matrix, dist=dist_coeffs)
-    detector = Detector(14, calibrator=calibration)
+    detector = Detector(8.5, calibrator=calibration)
     term = Terminal()
     # term = None
     with term.fullscreen(), term.cbreak():        
