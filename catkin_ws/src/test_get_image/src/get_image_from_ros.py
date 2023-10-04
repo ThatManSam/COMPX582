@@ -4,6 +4,7 @@ from math import sqrt
 from typing import Optional
 from blessed import Terminal # type: ignore
 
+import argparse
 import os
 import threading
 import numpy as np
@@ -319,7 +320,7 @@ def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros
                 else:
                     for tag in tags:
                         if tag.pose_t is not None:
-                            if straight:
+                            if straight or area:
                                 side, dist, area = calc_pose_dist(tag, overlayed, term)
                                 if side is None or dist is None or area is None:
                                     continue
@@ -390,7 +391,7 @@ def calculate_adjustment(a, b, angle) -> tuple:
     x = p+q
     return x, y
     
-def run_ros():
+def run_ros(args):
     from test_get_image.msg import ImageBundle # type: ignore
     rospy.init_node("test_get_camera", disable_signals=True)
 
@@ -406,7 +407,7 @@ def run_ros():
     dist_coeffs = np.array(camera_config['distortion_coefficients']['data'])
     
     calibration = Calibrator(camera_matrix, dist=dist_coeffs)
-    detector = Detector(14, calibrator=calibration)
+    detector = Detector(args.size, calibrator=calibration)
 
     pub = rospy.Publisher("/twist", Twist, queue_size=1)
 
@@ -469,7 +470,7 @@ def continuous_camera_capture(event: threading.Event):
             pass
     cam.close_camera()
 
-def run_local():
+def run_local(args):
     print("Loading camera config")
     camera_config_file = './src/test_get_image/CameraConfigs/basler_1L.yaml'
     with open(camera_config_file, 'rt') as file:
@@ -478,19 +479,29 @@ def run_local():
     camera_matrix = np.array(camera_config['camera_matrix']['data']).reshape(3, 3)
     dist_coeffs = np.array(camera_config['distortion_coefficients']['data'])
     
+    dist = args.mode == 'dist'
+    area = args.mode == 'area'
+
     pub=None
     
-    driver = Driver(0.2, 0.05, 0.02, 4, False, pub) # OpenCV
+    pid_default = (0.2, 0.05, 0.02)
+
+    kp, ki, kd = args.pid if args.pid else pid_default
+
+    driver = Driver(kp, ki, kd, args.target, False, pub) # OpenCV
     # driver = Driver(0.5, 0.2, 0.1, 2, False, pub) # Other
     
     calibration = Calibrator(camera_matrix, dist=dist_coeffs)
-    detector = Detector(8.5, calibrator=calibration)
+    detector = Detector(args.size, calibrator=calibration)
     term = Terminal()
     # term = None
     with term.fullscreen(), term.cbreak():        
         event = threading.Event()
         print("Starting processing")
-        process_thread = threading.Thread(target=ProcessImages, args=(detector, driver, term, event, False))
+        process_thread = threading.Thread(
+            target=ProcessImages,
+            args=(detector, driver, term, event, False, dist, area)
+        )
         process_thread.start()
         print("Starting Capture")
         capture_thread = threading.Thread(target=continuous_camera_capture, args=(event,))
@@ -504,5 +515,17 @@ def run_local():
     capture_thread.join()
 
 if __name__ == '__main__':
-    # run_ros()
-    run_local()
+    parser = argparse.ArgumentParser(
+        prog='AprilTag Navigation',
+        description='Drives a motor based on AprilTags detected by a camera'
+    )
+    parser.add_argument('-r', '--ros', action='store_true', help='Enables camera input from ros (Surbey Robot)')
+    parser.add_argument('-s', '--size', help='Set the marker size for detection (default 9)', default=9.0, type=float)
+    parser.add_argument('-m', '--mode', choices=['dist', 'area'], help='Set the measuring mode (default pose)', default=None)
+    parser.add_argument('-t', '--target', help='Set the target for PID controller (default 2)', default=2)
+    parser.add_argument('-p', '--pid', nargs=3, help='Set the k values for PID controller')
+    args = parser.parse_args()
+    if args.ros:
+        run_ros(args)
+    else:
+        run_local(args)
