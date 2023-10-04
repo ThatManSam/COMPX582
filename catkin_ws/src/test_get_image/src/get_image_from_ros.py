@@ -163,8 +163,8 @@ def show_stats(term, x, z, area):
 def calc_pose_opencv(tag, det, image, term=None):
     
     if tag.pose_t is not None:
-        if det.calibrator is not None:
-            draw_vectors(tag, det, image)
+        # if det.calibrator is not None:
+        #     draw_vectors(tag, det, image)
             
         t_vec, R_vec = invert_matrices(tag.pose_t, tag.pose_R)
         
@@ -220,7 +220,7 @@ def calc_pose_opencv(tag, det, image, term=None):
         # z_rounded = int(round(z_adjusted))
         area = calc_area(tag.corners)
         # show_stats(term, x_rounded, z_rounded, x_adjusted, z_adjusted, x, z, angle_left_right_degrees, rot_calced, area, other_calced)
-        show_stats(term, x, z, area)
+        # show_stats(term, x, z, area)
         return x, y, z, area
     else:
         print("Can't calculate pose")
@@ -320,28 +320,30 @@ def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros
                 else:
                     for tag in tags:
                         if tag.pose_t is not None:
-                            if straight or area:
-                                side, dist, area = calc_pose_dist(tag, overlayed, term)
-                                if side is None or dist is None or area is None:
-                                    continue
-                                if area:
-                                    driver.receive_telemetry(side, area)
-                                    print(f"\rID: {tag.tag_id}, Distance: Area {area: .2f} Side {side: .2f}{' '*20}", end="")
-                                else:
-                                    driver.receive_telemetry(side, dist)
-                                    print(f"\rID: {tag.tag_id}, Distance: Abs {dist: .2f} Side {side: .2f}{' '*20}", end="")
-                            else:
-                                x, y, z, area = calc_pose_opencv(tag, det, overlayed, term)
-                                if x is None or y is None or z is None or area is None:
-                                    continue
-                                driver.receive_telemetry(x, z)
-                                # x = tag.pose_t[0][-1]
-                                # y = tag.pose_t[1][-1]
-                                # z = tag.pose_t[2][-1]
-                                dist = sqrt(x**2 + y**2 + z**2)
-                                print(f"\rTime: {image.header.stamp.secs if ros else 'None'}, ID: {tag.tag_id}, {f'Distance: F {z: .2f} R {x: .2f} Abs {dist.real: .2f}cm' if dist is not None else ''}{' '*20}", end="")
-                                # print(f"ID: {tag.tag_id}, Distance: {dist}")
-                    
+                            # if straight or area:
+                            side, dist, meas_area = calc_pose_dist(tag, overlayed, term)
+                            if side is None or dist is None or area is None:
+                                continue
+                            # if area:
+                            #     # driver.receive_telemetry(side, meas_area)
+                            #     print(f"ID: {tag.tag_id}, Distance: Area {meas_area: .2f} Side {side: .2f}{' '*20}", end="")
+                            # else:
+                                # driver.receive_telemetry(side, dist)
+                            print(f"ID: {tag.tag_id}\n")
+                            print(f"Calc: Abs {dist: .2f} Side {side: .2f} Area {meas_area: .2f}")
+                            # else:
+                            x, y, z, area = calc_pose_opencv(tag, det, overlayed, term)
+                            if x is None or y is None or z is None or area is None:
+                                continue
+                            # driver.receive_telemetry(x, z)
+                            # x = tag.pose_t[0][-1]
+                            # y = tag.pose_t[1][-1]
+                            # z = tag.pose_t[2][-1]
+                            dist = sqrt(x**2 + y**2 + z**2)
+                            # print(f"\rTime: {image.header.stamp.secs if ros else 'None'}, ID: {tag.tag_id}, {f'Distance: F {z: .2f} R {x: .2f} Abs {dist.real: .2f}cm' if dist is not None else ''}{' '*20}", end="")
+                            print(f"Pose: {f'F {z: .4f} R {x: .4f}' if dist is not None else 'Error'}")
+                            # print(f"ID: {tag.tag_id}, Distance: {dist}")
+                
         else:
             if len(tags) == 0:
                 print(f"\rNo Tags Found, Time: {image.header.stamp.secs if ros else 'None'}" + " "*40, end="")
@@ -472,13 +474,18 @@ def continuous_camera_capture(event: threading.Event):
 
 def run_local(args):
     print("Loading camera config")
-    camera_config_file = './src/test_get_image/CameraConfigs/basler_1L.yaml'
-    with open(camera_config_file, 'rt') as file:
-        camera_config = yaml.safe_load(file)
-    cam_matrix = camera_config["camera_matrix"]["data"]
-    camera_matrix = np.array(camera_config['camera_matrix']['data']).reshape(3, 3)
-    dist_coeffs = np.array(camera_config['distortion_coefficients']['data'])
-    
+    if args.calibration == 'base':
+        camera_config_file = './src/test_get_image/CameraConfigs/basler_1L.yaml'
+        with open(camera_config_file, 'rt') as file:
+            camera_config = yaml.safe_load(file)
+        cam_matrix = camera_config["camera_matrix"]["data"]
+        camera_matrix = np.array(camera_config['camera_matrix']['data']).reshape(3, 3)
+        dist_coeffs = np.array(camera_config['distortion_coefficients']['data'])
+        calibration = Calibrator(camera_matrix, dist=dist_coeffs)
+    elif args.calibration == '20':
+        calibration = Calibrator.load_calibration('../calibration_20.pickle')
+    else:
+        raise ValueError("Invalid calibration")
     dist = args.mode == 'dist'
     area = args.mode == 'area'
 
@@ -491,7 +498,6 @@ def run_local(args):
     driver = Driver(kp, ki, kd, args.target, False, pub) # OpenCV
     # driver = Driver(0.5, 0.2, 0.1, 2, False, pub) # Other
     
-    calibration = Calibrator(camera_matrix, dist=dist_coeffs)
     detector = Detector(args.size, calibrator=calibration)
     term = Terminal()
     # term = None
@@ -524,6 +530,8 @@ if __name__ == '__main__':
     parser.add_argument('-m', '--mode', choices=['dist', 'area'], help='Set the measuring mode (default pose)', default=None)
     parser.add_argument('-t', '--target', help='Set the target for PID controller (default 2)', default=2)
     parser.add_argument('-p', '--pid', nargs=3, help='Set the k values for PID controller')
+    parser.add_argument('-c', '--calibration', choices=['base', '20'], help='Set camera calibration (default base)', default='base')
+    
     args = parser.parse_args()
     if args.ros:
         run_ros(args)
