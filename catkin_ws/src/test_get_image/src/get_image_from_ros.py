@@ -341,7 +341,9 @@ def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros
                             # z = tag.pose_t[2][-1]
                             dist = sqrt(x**2 + y**2 + z**2)
                             # print(f"\rTime: {image.header.stamp.secs if ros else 'None'}, ID: {tag.tag_id}, {f'Distance: F {z: .2f} R {x: .2f} Abs {dist.real: .2f}cm' if dist is not None else ''}{' '*20}", end="")
+                            r_side = pixel_side_calc(side, z)
                             print(f"Pose: {f'F {z: .4f} R {x: .4f}' if dist is not None else 'Error'}")
+                            print(f"SIDE: {r_side: .2f}")
                             # print(f"ID: {tag.tag_id}, Distance: {dist}")
                 
         else:
@@ -375,7 +377,16 @@ def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros
         # cv.imshow(window_name, bw_image)
         cv.waitKey(1)
         
-        
+
+def pixel_side_calc(m_side, dist):
+    s = 741.23/545.25
+    
+    b = -0.1632*pow(dist, 2) + 1.1553*dist
+    
+    side = m_side/(741.23*pow(s, -b))
+    
+    return side
+
 def calculate_direction():
     pass
 
@@ -404,7 +415,6 @@ def run_ros(args):
     with open(camera_config_file, 'rt') as file:
         camera_config = yaml.safe_load(file)
     # print(camera_config)
-    cam_matrix = camera_config["camera_matrix"]["data"]
     camera_matrix = np.array(camera_config['camera_matrix']['data']).reshape(3, 3)
     dist_coeffs = np.array(camera_config['distortion_coefficients']['data'])
     
