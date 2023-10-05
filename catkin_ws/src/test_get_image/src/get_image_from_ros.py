@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
+from dataclasses import dataclass
 from math import sqrt
-from typing import Optional
+import time
+from typing import List, Optional
 from blessed import Terminal # type: ignore
 
 import argparse
@@ -16,17 +18,30 @@ import cv2 as cv
 
 from simple_pid import PID
 from geometry_msgs.msg import Twist
+from std_msgs.msg import Float32MultiArray
 from camera.detector import Detector
 from camera.calibrate import Calibrator
 
+MAX_SERIAL_SPEED = 1000
+MAX_SERIAL_FACTOR = 1
+
+MAX_TAG_DIST = 7
+
+TURN_DIST = 2.5
+TURN_TIME = 4
+
 class Driver:
-    def __init__(self, Kp, Ki, Kd, target, active=True, publisher: Optional[rospy.Publisher]=None, serial=None) -> None:
+    def __init__(self, Kp, Ki, Kd, target, active=True, publisher: Optional[rospy.Publisher]=None, serial=False, target_tag=6) -> None:
         if active and publisher is None and serial is None:
             raise ValueError("Cannot have active driver without publisher or serial")
         self.pub = publisher
         self.last_x = 0
         self.last_z = 0
         self.active = active
+        
+        self.target_tag = target_tag
+        
+        self.serial = serial
         
         self.pid = PID(Kp, Ki, Kd, setpoint=target)
         
@@ -73,20 +88,68 @@ class Driver:
         self.update_drive(pid_forward, pid_turn)
         
     def update_drive(self, forward, turn):
-        f_forward = forward * self.FACTOR_SPEED
-        f_turn = turn * self.FACTOR_TURN
-        print(f"Sending output: f: {f_forward:.3f} | t: {f_turn:.3f}")
-        self.twist = self._create_twist(f_forward, f_turn)
-        if self.active:
-            self.pub.publish(self.twist)
+        if self.serial:
+            self.msg = self._create_msg(forward, turn)
+            print(f"Sending output: L: {self.msg.data[0]:.3f} | R: {self.msg.data[1]:.3f}")
+            data = self.msg
+        else:
+            f_forward = forward * self.FACTOR_SPEED
+            f_turn = turn * self.FACTOR_TURN
+            print(f"Sending output: f: {f_forward:.3f} | t: {f_turn:.3f}")
+            self.twist = self._create_twist(f_forward, f_turn)
+            data = self.twist
+            
+        if self.active and self.pub is not None:
+            self.pub.publish(data)
         else:
             print(repr(self))
+    
+    def execute_turn(self, dir: str):
+        if dir == 'left':
+            dir_fac = 1
+        if dir == 'right':
+            dir_fac = -1
+        else:
+            return
+        if self.serial and self.pub is not None:
+            self.msg = self._create_msg(MAX_SERIAL_SPEED/2, dir_fac*MAX_SERIAL_SPEED/2)
+            self.pub.publish(self.msg)
+            time.sleep(TURN_TIME)
+        else:
+            pass
+            
+    def stop(self):
+        if self.serial:
+            self.msg = self._create_msg(0, 0)
+            data = self.msg
+        else:
+            self.twist = self._create_twist(0, 0)
+            data = self.twist
+            
+        if self.active and self.pub is not None:
+            print("Sending Stop")
+            self.pub.publish(data)
+        else:
+            print(repr(self))
+            
+    def update_target(self, target):
+        self.pid.setpoint = target
+        
+    def update_target_tag(self, tag: int):
+        self.target_tag = tag
         
     def _create_twist(self, forward, turn) -> Twist:
         t = Twist()
         t.linear.x = forward
         t.angular.z = turn
         return t
+    
+    def _create_msg(self, forward, turn) -> Float32MultiArray:
+        left = forward-turn
+        right = forward+turn
+        msg = Float32MultiArray()
+        msg.data = [left, right]
+        return msg
     
     def __repr__(self) -> str:
         return (
@@ -314,10 +377,19 @@ def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros
             print(term.clear())
             # Display the list of tags at the bottom left
             
+            @dataclass
+            class DetectedTag:
+                id: int
+                forward: float
+                side: float
+                
+            
             with term.location(0, term.height - len(tags) - 2):
                 if len(tags) == 0:
                     print("No Tags Found")
+                    driver.stop()
                 else:
+                    tag_info: List[DetectedTag] = []
                     for tag in tags:
                         if tag.pose_t is not None:
                             # if straight or area:
@@ -348,6 +420,28 @@ def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros
                             print(f"Pose: {f'F {z: .4f} R {x: .4f}' if dist is not None else 'Error'}")
                             print(f"SIDE: {r_side: .2f} POSE: STRAIGHT: {r_z:.2f} SIDE: {r_x:.2f}")
                             # print(f"ID: {tag.tag_id}, Distance: {dist}")
+                            tag_info.append(DetectedTag(tag.tag_id, r_z, r_x))
+                            # driver.receive_telemetry(r_x, r_z)
+                    
+                    max_dist = 0
+                    selected = tag_info[0]
+                    for tag in tag_info:
+                        if tag.id == driver.target_tag:
+                            selected = tag
+                            break
+                        if tag.forward > MAX_TAG_DIST:
+                            continue
+                        if tag.forward > max_dist:
+                            selected = tag
+                            max_dist = tag.forward
+                            continue
+                    
+                    if selected.id == driver.target_tag:
+                        if selected.forward < TURN_DIST:
+                            driver.execute_turn('left')
+                    
+                    driver.receive_telemetry(selected.side, selected.forward)
+                        
                 
         else:
             if len(tags) == 0:
@@ -513,13 +607,17 @@ def run_local(args):
     dist = args.mode == 'dist'
     area = args.mode == 'area'
 
-    pub=None
+    pub=rospy.Publisher(
+        'navigation_controller',
+        Float32MultiArray,
+        queue_size=1
+    )
     
     pid_default = (0.2, 0.05, 0.02)
 
     kp, ki, kd = args.pid if args.pid else pid_default
 
-    driver = Driver(kp, ki, kd, args.target, False, pub) # OpenCV
+    driver = Driver(kp, ki, kd, args.target, False, pub, target_tag=args.tag) # OpenCV
     # driver = Driver(0.5, 0.2, 0.1, 2, False, pub) # Other
     
     detector = Detector(args.size, calibrator=calibration)
@@ -553,6 +651,7 @@ if __name__ == '__main__':
     parser.add_argument('-s', '--size', help='Set the marker size for detection (default 9)', default=9.0, type=float)
     parser.add_argument('-m', '--mode', choices=['dist', 'area'], help='Set the measuring mode (default pose)', default=None)
     parser.add_argument('-t', '--target', help='Set the target for PID controller (default 2)', default=2)
+    parser.add_argument('-a', '--tag', help='Set the target tag to turn at', default=0)
     parser.add_argument('-p', '--pid', nargs=3, help='Set the k values for PID controller')
     parser.add_argument('-c', '--calibration', choices=['base', '20'], help='Set camera calibration (default base)', default='base')
     

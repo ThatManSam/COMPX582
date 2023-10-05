@@ -44,31 +44,32 @@ class AutonomousSubscriber:
         return control
 
     def autonomous_callback(self, data):
-        distance = data.data
-        right_dist = distance[0]
-        left_dist = distance[1]
+        # distance = data.data
+        # right_dist = distance[0]
+        # left_dist = distance[1]
 
-        right_measure = self.PID_controller(right_dist)
-        left_measure = self.PID_controller(left_dist)
+        # right_measure = self.PID_controller(right_dist)
+        # left_measure = self.PID_controller(left_dist)
 
-        if right_measure == 0 or left_measure == 0:
-            left_ratio = 0
-            right_ratio = 0
-        elif right_dist > 700 or left_dist > 700:
-            left_ratio = 0
-            right_ratio = 0
-        else:
-            left_ratio = right_measure / left_measure
-            right_ratio = left_measure / right_measure
+        # if right_measure == 0 or left_measure == 0:
+        #     left_ratio = 0
+        #     right_ratio = 0
+        # elif right_dist > 700 or left_dist > 700:
+        #     left_ratio = 0
+        #     right_ratio = 0
+        # else:
+        #     left_ratio = right_measure / left_measure
+        #     right_ratio = left_measure / right_measure
 
-        left_speed = min(self.max_speed*left_ratio, self.max_speed)
-        right_speed = min(self.max_speed*right_ratio, self.max_speed)
+        # left_speed = min(self.max_speed*left_ratio, self.max_speed)
+        # right_speed = min(self.max_speed*right_ratio, self.max_speed)
 
-        msg = Float32MultiArray()
+        # msg = Float32MultiArray()
 
-        msg.data = [float(left_speed), float(right_speed)]
+        # msg.data = [float(left_speed), float(right_speed)]
 
-        self.publisher_.publish(msg)
+        # self.publisher_.publish(msg)
+        self.publisher_.publish(data)
 
         # if int(data.data[3]) == 0:
             #self.get_logger().info("Publishing: %s" % str(msg.data))

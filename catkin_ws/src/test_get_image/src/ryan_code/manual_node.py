@@ -19,7 +19,6 @@ class ManualPublisher:
         self.scheduler = sched.scheduler(time.time, time.sleep)
         self.scheduler.enter(self.timer_period, 1, self.joystick_callback)
         self.scheduler.run()
-        self.scheduler
         self.max_speed = 1000.0
 
     def joystick_callback(self):

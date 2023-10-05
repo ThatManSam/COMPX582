@@ -3,6 +3,7 @@
 import rospy
 from std_msgs.msg import Float32MultiArray
 import serial
+import sched
 import time
 
 class UltrasonicPublisher:
@@ -13,8 +14,10 @@ class UltrasonicPublisher:
             Float32MultiArray, 
             queue_size=1
         )
-        timer_period = 0.05
-        self.timer = self.create_timer(timer_period, self.dist_callback)
+        self.timer_period = 0.05
+        self.scheduler = sched.scheduler(time.time, time.sleep)
+        self.scheduler.enter(self.timer_period, 1, self.dist_callback)
+        self.scheduler.run()
         self.ser = ser
 
     def calc_dist(self):
@@ -45,6 +48,7 @@ class UltrasonicPublisher:
         print(msg.data)
         #self.get_logger().info("Publishing: %s" % str(msg.data))
         # time.sleep(0.05)
+        self.scheduler.enter(self.timer_period, 1, self.dist_callback)
 
 def main(args=None):
     ser = serial.Serial('/dev/serial/by-id/usb-Arduino__www.arduino.cc__0042_7513030383535170D0B2-if00', 115200)
