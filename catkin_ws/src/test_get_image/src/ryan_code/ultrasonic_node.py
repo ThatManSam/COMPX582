@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 
-import rclpy
-from rclpy.node import Node
+import rospy
 from std_msgs.msg import Float32MultiArray
 import serial
 import time
 
-class UltrasonicPublisher(Node):
+class UltrasonicPublisher:
 
     def __init__(self, ser):
-        super().__init__('ultrasonic_publisher')
-        self.publisher_ = self.create_publisher(Float32MultiArray, 'dist_transfer', 1)
+        self.publisher_ = rospy.Publisher(
+            'dist_transfer', 
+            Float32MultiArray, 
+            queue_size=1
+        )
         timer_period = 0.05
         self.timer = self.create_timer(timer_period, self.dist_callback)
         self.ser = ser
@@ -47,16 +49,15 @@ class UltrasonicPublisher(Node):
 def main(args=None):
     ser = serial.Serial('/dev/serial/by-id/usb-Arduino__www.arduino.cc__0042_7513030383535170D0B2-if00', 115200)
 
-    rclpy.init(args=args)
+    rospy.init_node('ultrasonic_publisher')
 
-    ultrasonic_publisher = UltrasonicPublisher(ser)
+    UltrasonicPublisher(ser)
 
     # ultrasonic_publisher.dist_callback()
 
-    rclpy.spin(ultrasonic_publisher)
+    rospy.spin()
 
-    ultrasonic_publisher.destroy_node()
-    rclpy.shutdown
+    rospy.signal_shutdown('closing')
 
 if __name__ == '__main__':
     main()

@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 
-import rclpy
-from rclpy.node import Node
+import rospy
+
 from std_msgs.msg import Float32MultiArray
 
-class AutonomousSubscriber(Node):
+class AutonomousSubscriber:
 
     def __init__(self):
-        super().__init__('autonomous_publisher')
-        self.publisher_ = self.create_publisher(Float32MultiArray, 'auto_control', 1)
-        
-        self.subscription = self.create_subscription(
+        self.publisher_ = rospy.Publisher(
+            'auto_control',
             Float32MultiArray,
-            'dist_transfer',
+            queue_size=1
+        )
+        
+        self.subscription = rospy.Subscriber(
+            'navigation_controller',
+            Float32MultiArray,
             self.autonomous_callback,
-            1)
-        self.subscription
+            queue_size=1
+        )
 
         self.Kp = 1
         self.Ki = 0
@@ -71,13 +74,12 @@ class AutonomousSubscriber(Node):
             #self.get_logger().info("Publishing: %s" % str(msg.data))
 
 def main(args=None):
-    rclpy.init(args=args)
+    rospy.init_node('autonomous_publisher')
+    AutonomousSubscriber()
 
-    autonomous_subscriber = AutonomousSubscriber()
+    rospy.spin()
 
-    rclpy.spin(autonomous_subscriber)
-
-    rclpy.shutdown()
+    rospy.signal_shutdown('closing')
 
 if __name__ == '__main__':
     main()

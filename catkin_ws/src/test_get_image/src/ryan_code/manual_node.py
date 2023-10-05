@@ -1,19 +1,25 @@
 #!/usr/bin/env python3
 
-import rclpy
-from rclpy.node import Node
+import rospy
 from std_msgs.msg import Float32MultiArray
 import numpy as np
 import math
 import pygame
-
-class ManualPublisher(Node):
+import sched
+import time
+class ManualPublisher:
 
     def __init__(self):
-        super().__init__('manual_publisher')
-        self.publisher_ = self.create_publisher(Float32MultiArray, 'manual_control', 1)
-        timer_period = 0.05
-        self.timer = self.create_timer(timer_period, self.joystick_callback)
+        self.publisher_ = rospy.Publisher(
+            'manual_control',
+            Float32MultiArray,
+            queue_size=1
+        )
+        self.timer_period = 0.05
+        self.scheduler = sched.scheduler(time.time, time.sleep)
+        self.scheduler.enter(self.timer_period, 1, self.joystick_callback)
+        self.scheduler.run()
+        self.scheduler
         self.max_speed = 1000.0
 
     def joystick_callback(self):
@@ -45,6 +51,8 @@ class ManualPublisher(Node):
         self.publisher_.publish(msg)
 
         #self.get_logger().info("Publishing: %s" % str(msg.data))
+        
+        self.scheduler.enter(self.timer_period, 1, self.joystick_callback)
 
     def calc_speed(self, left_ratio, right_ratio, magnitude):
         left_percentage = max(min(left_ratio * magnitude, 1), -1)
@@ -83,14 +91,13 @@ class ManualPublisher(Node):
         return ratio
 
 def main(args=None):
-    rclpy.init(args=args)
+    rospy.init_node('manual_publisher')
+    
+    ManualPublisher()
 
-    manual_publisher = ManualPublisher()
+    rospy.spin()
 
-    rclpy.spin(manual_publisher)
-
-    manual_publisher.destroy_node()
-    rclpy.shutdown()
+    rospy.signal_shutdown('closing')
 
 if __name__ == '__main__':
     main()
