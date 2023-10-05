@@ -341,9 +341,10 @@ def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros
                             # z = tag.pose_t[2][-1]
                             dist = sqrt(x**2 + y**2 + z**2)
                             # print(f"\rTime: {image.header.stamp.secs if ros else 'None'}, ID: {tag.tag_id}, {f'Distance: F {z: .2f} R {x: .2f} Abs {dist.real: .2f}cm' if dist is not None else ''}{' '*20}", end="")
+                            r_z = pose_straight_calc(z)
                             r_side = pixel_side_calc(side, z)
                             print(f"Pose: {f'F {z: .4f} R {x: .4f}' if dist is not None else 'Error'}")
-                            print(f"SIDE: {r_side: .2f}")
+                            print(f"SIDE: {r_side: .2f} STRIAGHT: {r_z:.2f}")
                             # print(f"ID: {tag.tag_id}, Distance: {dist}")
                 
         else:
@@ -391,6 +392,9 @@ def pixel_side_calc(m_side, dist):
     side = m_side_abs/(741.23*pow(s, -b))
     
     return side*m_side_sign
+
+def pose_straight_calc(dist):
+    return 1.03*abs(dist)-0.4
 
 def calculate_direction():
     pass
