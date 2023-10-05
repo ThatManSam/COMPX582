@@ -15,11 +15,11 @@ class ManualPublisher:
             Float32MultiArray,
             queue_size=1
         )
+        self.max_speed = 1000.0
         self.timer_period = 0.05
         self.scheduler = sched.scheduler(time.time, time.sleep)
         self.scheduler.enter(self.timer_period, 1, self.joystick_callback)
         self.scheduler.run()
-        self.max_speed = 1000.0
 
     def joystick_callback(self):
         msg = Float32MultiArray()
