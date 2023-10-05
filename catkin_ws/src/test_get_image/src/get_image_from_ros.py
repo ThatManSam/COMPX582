@@ -396,7 +396,7 @@ def pixel_side_calc(m_side, dist):
     return side*m_side_sign
 
 def pose_straight_calc(dist):
-    return 1.03*abs(dist)-0.4
+    return (abs(dist)+0.4)/1.03
 
 def pose_side_calc(side):
     return side/1.59
