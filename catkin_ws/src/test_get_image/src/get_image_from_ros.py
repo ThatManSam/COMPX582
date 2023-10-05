@@ -379,13 +379,18 @@ def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros
         
 
 def pixel_side_calc(m_side, dist):
+    m_side_sign = 1 if m_side >= 0 else -1
+    m_side_abs = abs(m_side)
+    
     s = 741.23/545.25
     
-    b = -0.1632*pow(dist, 2) + 1.1553*dist
+    d = abs(dist) + 3
     
-    side = m_side/(741.23*pow(s, -b))
+    b = -0.1632*pow(d, 2) + 1.1553*d
     
-    return side
+    side = m_side_abs/(741.23*pow(s, -b))
+    
+    return side*m_side_sign
 
 def calculate_direction():
     pass
