@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from dataclasses import dataclass
+from datetime import datetime
 from math import sqrt
 import time
 from typing import List, Optional
@@ -22,13 +23,15 @@ from std_msgs.msg import Float32MultiArray
 from camera.detector import Detector
 from camera.calibrate import Calibrator
 
-MAX_SERIAL_SPEED = 1000
-MAX_SERIAL_FACTOR = 1
+MAX_SERIAL_SPEED = 600
+MAX_SERIAL_FACTOR = 20
 
 MAX_TAG_DIST = 7
 
-TURN_DIST = 2.5
-TURN_TIME = 4
+TURN_DIST = 3.3
+TURN_TIME = 8
+
+recordings = ['ID,Forward,Side,Capture Time,Result Time,Active\n']
 
 class Driver:
     def __init__(self, Kp, Ki, Kd, target, active=True, publisher: Optional[rospy.Publisher]=None, serial=False, target_tag=6) -> None:
@@ -43,15 +46,15 @@ class Driver:
         
         self.serial = serial
         
-        self.pid = PID(Kp, Ki, Kd, setpoint=target)
+        self.pid = PID(Kp, Ki, Kd, setpoint=float(target))
         
         self._diff_check_thresh = 0.5 # 0.5 a metre
         
         self.FACTOR_SPEED = 1
         self.FACTOR_TURN = 1
         
-        self.MAX_SPEED = 1.0
-        self.MAX_TURN = 1.0
+        self.MAX_SPEED = MAX_SERIAL_SPEED
+        self.MAX_TURN = MAX_SERIAL_FACTOR
         self.STOP_DIST = 2
         self.RATIO_TURN_SPEED = 0.5
         
@@ -73,18 +76,19 @@ class Driver:
         if real_forward < self.STOP_DIST:
             self.update_drive(0, 0)
             return
-        pid_side = self.pid(real_side)
+        # pid_side = self.pid(real_side)
+        pid_side = real_side
         print(f"Direct PID out: {pid_side:.3f}")
         if pid_side is None:
             print('Error with PID calucation')
             return
         pid_turn = (pid_side - self.pid.setpoint)*self.MAX_TURN
-        if pid_turn > 0:
-            pid_turn = min(pid_turn, self.MAX_TURN)
-        else:
-            pid_turn = max(pid_turn, -self.MAX_TURN)
+        # if pid_turn > 0:
+        #     pid_turn = min(pid_turn, self.MAX_TURN)
+        # else:
+        #     pid_turn = max(pid_turn, -self.MAX_TURN)
         pid_forward = self.MAX_SPEED - pid_turn*self.RATIO_TURN_SPEED
-        
+        print(f"Real PID out: {pid_side}")
         self.update_drive(pid_forward, pid_turn)
         
     def update_drive(self, forward, turn):
@@ -105,22 +109,31 @@ class Driver:
             print(repr(self))
     
     def execute_turn(self, dir: str):
+        left = 0
+        right = 0
         if dir == 'left':
-            dir_fac = 1
+            right = 1
         if dir == 'right':
-            dir_fac = -1
+            left = 1
         else:
             return
         if self.serial and self.pub is not None:
-            self.msg = self._create_msg(MAX_SERIAL_SPEED/2, dir_fac*MAX_SERIAL_SPEED/2)
-            self.pub.publish(self.msg)
+            msg = Float32MultiArray()
+            if left == 1:
+                msg.data = [MAX_SERIAL_SPEED, MAX_SERIAL_FACTOR*2]
+            else:
+                msg.data = [MAX_SERIAL_FACTOR*2, MAX_SERIAL_SPEED]
+            # self.msg = self._create_msg(MAX_SERIAL_SPEED/2, dir_fac*MAX_SERIAL_SPEED/2)
+            self.pub.publish(msg)
             time.sleep(TURN_TIME)
         else:
             pass
             
     def stop(self):
         if self.serial:
-            self.msg = self._create_msg(0, 0)
+            msg = Float32MultiArray()
+            msg.data = [0.0, 0.0]
+            self.msg = msg
             data = self.msg
         else:
             self.twist = self._create_twist(0, 0)
@@ -145,17 +158,23 @@ class Driver:
         return t
     
     def _create_msg(self, forward, turn) -> Float32MultiArray:
-        left = forward-turn
-        right = forward+turn
+        left = MAX_SERIAL_SPEED-turn*MAX_SERIAL_FACTOR
+        right = MAX_SERIAL_SPEED+turn*MAX_SERIAL_FACTOR
         msg = Float32MultiArray()
         msg.data = [left, right]
         return msg
     
     def __repr__(self) -> str:
-        return (
-            'linear: {self.twist.linear.x:.3f}\n'
-            'angular: {self.twist.angular.z:.3f}'
-        ).format(self=self)
+        if self.serial:
+            return (
+                'left: {self.msg.data[0]:.3f}\n'
+                'right: {self.msg.data[1]:.3f}'
+            ).format(self=self)
+        else:
+            return (
+                'linear: {self.twist.linear.x:.3f}\n'
+                'angular: {self.twist.angular.z:.3f}'
+            ).format(self=self)
 
 window_name = "Camera Test"
 
@@ -359,12 +378,14 @@ def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros
         term = term
         detector: Detector = det
         if ros:
+            img_time = time.time()
             img_flipped = obtain_image(image)
             bw_image = cv.cvtColor(img_flipped, cv.COLOR_BGR2GRAY)
             # cv.imwrite("ROS_PROCESSED.jpg", bw_image)
         else:
-            img_flipped = image
-            bw_image = image
+            img_time = image[1]
+            img_flipped = image[0]
+            bw_image = image[0]
         
         # calibration = Calibrator()
         tags = detector.detect(bw_image)
@@ -382,6 +403,12 @@ def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros
                 id: int
                 forward: float
                 side: float
+                img_time: float
+                result_time: float
+                active: bool
+                
+                def __str__(self) -> str:
+                    return f"{self.id},{self.forward},{self.side},{self.img_time},{self.result_time},{self.active}\n"
                 
             
             with term.location(0, term.height - len(tags) - 2):
@@ -420,7 +447,7 @@ def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros
                             print(f"Pose: {f'F {z: .4f} R {x: .4f}' if dist is not None else 'Error'}")
                             print(f"SIDE: {r_side: .2f} POSE: STRAIGHT: {r_z:.2f} SIDE: {r_x:.2f}")
                             # print(f"ID: {tag.tag_id}, Distance: {dist}")
-                            tag_info.append(DetectedTag(tag.tag_id, r_z, r_x))
+                            tag_info.append(DetectedTag(tag.tag_id, r_z, r_x, img_time, time.time(), False))
                             # driver.receive_telemetry(r_x, r_z)
                     
                     max_dist = 0
@@ -436,9 +463,20 @@ def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros
                             max_dist = tag.forward
                             continue
                     
+                    for tag in tag_info:
+                        if tag.id == selected.id:
+                            tag.active = True
+                            break
+                    
+                    for info in tag_info:
+                        recordings.append(str(info))
+                    
                     if selected.id == driver.target_tag:
                         if selected.forward < TURN_DIST:
-                            driver.execute_turn('left')
+                            print('### TURNING RIGHT ###')
+                            driver.execute_turn('right')
+                    
+                    print(f"Following {selected.id}")
                     
                     driver.receive_telemetry(selected.side, selected.forward)
                         
@@ -469,10 +507,10 @@ def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros
                 else:
                     print("No pose estimated")
                     print(f"\rTime: {image.header.stamp.secs if ros else 'None'}, ID: {tag.tag_id}", end="")
-        cv.namedWindow(window_name, cv.WINDOW_NORMAL)
-        cv.imshow(window_name, overlayed)
-        # cv.imshow(window_name, bw_image)
-        cv.waitKey(1)
+        # cv.namedWindow(window_name, cv.WINDOW_NORMAL)
+        # cv.imshow(window_name, overlayed)
+        # # cv.imshow(window_name, bw_image)
+        # cv.waitKey(1)
         
 
 def pixel_side_calc(m_side, dist):
@@ -577,20 +615,22 @@ def run_ros(args):
     thread.join()
     rospy.signal_shutdown("Closing")
     
-    cv.destroyAllWindows()
+    # cv.destroyAllWindows()
 
 
 def continuous_camera_capture(event: threading.Event):
     cam = camera.Camera(color=False, auto=False)
     while not event.is_set():
         try:
-            image_queue.put_nowait(cam.get_image())
+            curr_time = time.time()
+            image_queue.put_nowait((cam.get_image(), curr_time))
         except queue.Full:
             # Don't store old images
             pass
     cam.close_camera()
 
 def run_local(args):
+    rospy.init_node('nav_local', disable_signals=True)
     print("Loading camera config")
     if args.calibration == 'base':
         camera_config_file = './src/test_get_image/CameraConfigs/basler_1L.yaml'
@@ -617,7 +657,7 @@ def run_local(args):
 
     kp, ki, kd = args.pid if args.pid else pid_default
 
-    driver = Driver(kp, ki, kd, args.target, False, pub, target_tag=args.tag) # OpenCV
+    driver = Driver(kp, ki, kd, args.target, args.active, pub, target_tag=1, serial=True) # OpenCV
     # driver = Driver(0.5, 0.2, 0.1, 2, False, pub) # Other
     
     detector = Detector(args.size, calibrator=calibration)
@@ -639,6 +679,9 @@ def run_local(args):
         except KeyboardInterrupt:
             event.set()
     print("Closing")
+    with open(args.filename, 'wt') as f:
+        print(f'Saving recordings to {args.filename}')
+        f.writelines(recordings)
     process_thread.join()
     capture_thread.join()
 
@@ -648,12 +691,14 @@ if __name__ == '__main__':
         description='Drives a motor based on AprilTags detected by a camera'
     )
     parser.add_argument('-r', '--ros', action='store_true', help='Enables camera input from ros (Surbey Robot)')
+    parser.add_argument('-a', '--active', action='store_true', help='Enables Motor output')
     parser.add_argument('-s', '--size', help='Set the marker size for detection (default 9)', default=9.0, type=float)
     parser.add_argument('-m', '--mode', choices=['dist', 'area'], help='Set the measuring mode (default pose)', default=None)
     parser.add_argument('-t', '--target', help='Set the target for PID controller (default 2)', default=2)
-    parser.add_argument('-a', '--tag', help='Set the target tag to turn at', default=0)
+    parser.add_argument('-T', '--tag', help='Set the target tag to turn at (default 0)', default=0)
     parser.add_argument('-p', '--pid', nargs=3, help='Set the k values for PID controller')
     parser.add_argument('-c', '--calibration', choices=['base', '20'], help='Set camera calibration (default base)', default='base')
+    parser.add_argument('-f', '--filename', help='Filename for csv output', default='tag_capture.csv')
     
     args = parser.parse_args()
     if args.ros:
