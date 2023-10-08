@@ -39,10 +39,10 @@ class MotorControlSubscriber:
 
     def reset_usb(self):
         try:
-            command = 'uhubctl -l 1-1.3 -a off'
+            command = 'uhubctl -l 1-2.3.3 -a off'
             result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             time.sleep(2)
-            command = 'uhubctl -l 1-1.3 -a on'
+            command = 'uhubctl -l 1-2.3.3 -a on'
             result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             if result.returncode == 0:
                 print("usb reset correctly")
@@ -69,6 +69,7 @@ class MotorControlSubscriber:
         self.navigation_speed = msg.data
 
     def main_callback(self, msg):
+        # print(msg.data)
         mode = int(msg.data[3])
         picking_ratio = (msg.data[2]/self.max_ratio)
         # print(picking_ratio)
@@ -127,7 +128,7 @@ class MotorControlSubscriber:
                 read = self.ser.read().decode()
                 read2 = self.ser2.read().decode()
 
-                print(read, read2)
+                # print(read, read2)
 
 
 def main(args=None):

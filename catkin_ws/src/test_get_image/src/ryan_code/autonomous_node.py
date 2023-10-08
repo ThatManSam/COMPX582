@@ -69,6 +69,8 @@ class AutonomousSubscriber:
         # msg.data = [float(left_speed), float(right_speed)]
 
         # self.publisher_.publish(msg)
+        print("#### NAV RECEIVED ####")
+        print(data.data)
         self.publisher_.publish(data)
 
         # if int(data.data[3]) == 0:

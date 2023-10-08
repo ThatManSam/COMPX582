@@ -50,7 +50,7 @@ class ManualPublisher:
         self.publisher_.publish(msg)
 
         #self.get_logger().info("Publishing: %s" % str(msg.data))
-        
+        print(msg.data)
         self.scheduler.enter(self.timer_period, 1, self.joystick_callback)
 
     def calc_speed(self, left_ratio, right_ratio, magnitude):

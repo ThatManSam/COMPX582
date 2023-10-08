@@ -14,11 +14,11 @@ class UltrasonicPublisher:
             Float32MultiArray, 
             queue_size=1
         )
+        self.ser = ser
         self.timer_period = 0.05
         self.scheduler = sched.scheduler(time.time, time.sleep)
         self.scheduler.enter(self.timer_period, 1, self.dist_callback)
         self.scheduler.run()
-        self.ser = ser
 
     def calc_dist(self):
         try:
@@ -28,13 +28,13 @@ class UltrasonicPublisher:
             line = self.ser.readline().decode().strip()
             data = line.split(",")
             
-            left_dist = float(data[0])
-            right_dist = float(data[1])
+            # left_dist = float(data[0])
+            # right_dist = float(data[1])
             speed = float(data[2])
             switch = float(data[3])
             emergency = float(data[4])
 
-            return [left_dist, right_dist, speed, switch, emergency]
+            return [0.0, 0.0, speed, switch, emergency]
         
         except serial.SerialException:
 
@@ -45,7 +45,7 @@ class UltrasonicPublisher:
         msg.data = self.calc_dist()
 
         self.publisher_.publish(msg)
-        print(msg.data)
+        # print(msg.data)
         #self.get_logger().info("Publishing: %s" % str(msg.data))
         # time.sleep(0.05)
         self.scheduler.enter(self.timer_period, 1, self.dist_callback)
