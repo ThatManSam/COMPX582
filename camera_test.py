@@ -21,6 +21,9 @@ if args.camera:
 else:
     img = cv2.imread('images/marker_1500mm.png', cv2.IMREAD_GRAYSCALE)
 
+cv2.imwrite('output.png', img)
+exit(0)
+
 print(img.shape)
 cv2.namedWindow("Camera Test", cv2.WINDOW_NORMAL)
 cv2.imshow('Camera Test', img)

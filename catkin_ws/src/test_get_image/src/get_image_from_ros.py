@@ -23,12 +23,12 @@ from std_msgs.msg import Float32MultiArray
 from camera.detector import Detector
 from camera.calibrate import Calibrator
 
-MAX_SERIAL_SPEED = 600
+MAX_SERIAL_SPEED = 1000
 MAX_SERIAL_FACTOR = 20
 
 MAX_TAG_DIST = 7
 
-TURN_DIST = 3.3
+TURN_DIST = 4
 TURN_TIME = 8
 
 recordings = ['ID,Forward,Side,Capture Time,Result Time,Active\n']
@@ -60,7 +60,7 @@ class Driver:
         
     def _stabalise_sign(self, side, forward):
         stab_side = side
-        if side > self._diff_check_thresh:
+        if abs(side-self.pid.setpoint) > self._diff_check_thresh:
             diff = abs(side - self.last_x)
             if diff > abs(max(side, self.last_x)):
                 stab_side = -side
@@ -78,7 +78,7 @@ class Driver:
             return
         # pid_side = self.pid(real_side)
         pid_side = real_side
-        print(f"Direct PID out: {pid_side:.3f}")
+        # print(f"Direct PID out: {pid_side:.3f}")
         if pid_side is None:
             print('Error with PID calucation')
             return
@@ -99,7 +99,7 @@ class Driver:
         else:
             f_forward = forward * self.FACTOR_SPEED
             f_turn = turn * self.FACTOR_TURN
-            print(f"Sending output: f: {f_forward:.3f} | t: {f_turn:.3f}")
+            # print(f"Sending output: f: {f_forward:.3f} | t: {f_turn:.3f}")
             self.twist = self._create_twist(f_forward, f_turn)
             data = self.twist
             
@@ -120,12 +120,12 @@ class Driver:
         if self.serial and self.pub is not None:
             msg = Float32MultiArray()
             if left == 1:
-                msg.data = [MAX_SERIAL_SPEED, MAX_SERIAL_FACTOR*2]
+                msg.data = [MAX_SERIAL_SPEED*0.6, MAX_SERIAL_FACTOR*2]
             else:
-                msg.data = [MAX_SERIAL_FACTOR*2, MAX_SERIAL_SPEED]
+                msg.data = [MAX_SERIAL_FACTOR*2, MAX_SERIAL_SPEED*0.6]
             # self.msg = self._create_msg(MAX_SERIAL_SPEED/2, dir_fac*MAX_SERIAL_SPEED/2)
             self.pub.publish(msg)
-            time.sleep(TURN_TIME)
+            # time.sleep(TURN_TIME)
         else:
             pass
             
@@ -216,19 +216,22 @@ def show_stats(term, x, z, area):
         print("Can't show stats, no display")
         return
     # Center the status page
+    
+    enlarge_factor = 2
+    
     with term.location(0, term.height // 2 - 5):
         # Display right/left distance (90 degrees to forward)
         # print(term.center(f"Right/Left Distance: {x:.3f} m ({x_adjusted:.3f})"))
         # print(term.center(f"Right/Left Distance: {x_ad:.3f} m ({x:.3f})"))
         print(term.center(f"Right/Left Distance: {x:.3f} m"))
         # x_scaled = x_rd*2
-        x_scaled = -int(round(x))*2
+        x_scaled = int(round(x*2*enlarge_factor))
         # Create a horizontal line of "-" for the forward distance
         print(term.center(" "*x_scaled + "—" * abs(x_scaled) + " "*-x_scaled))
         
         # Create vertical lines of "|" for the right/left distance
         # for _ in range(z_rd):
-        for _ in range(abs(int(round(z)))):
+        for _ in range(abs(int(round(z*enlarge_factor)))):
             print(term.center("|"))
         # print(term.center(f"Forward Distance: {z:.3f} m ({z_adjusted:.3f})"))
         # print(term.center(f"Forward Distance: {z_ad:.3f} m ({z:.3f})"))
@@ -444,21 +447,31 @@ def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros
                             r_z = pose_straight_calc(z)
                             r_side = pixel_side_calc(side, z)
                             
-                            print(f"Pose: {f'F {z: .4f} R {x: .4f}' if dist is not None else 'Error'}")
-                            print(f"SIDE: {r_side: .2f} POSE: STRAIGHT: {r_z:.2f} SIDE: {r_x:.2f}")
+                            # print(f"Pose: {f'F {z: .4f} R {x: .4f}' if dist is not None else 'Error'}")
+                            # print(f"SIDE: {r_side: .2f} POSE: STRAIGHT: {r_z:.2f} SIDE: {r_x:.2f}")
                             # print(f"ID: {tag.tag_id}, Distance: {dist}")
                             tag_info.append(DetectedTag(tag.tag_id, r_z, r_x, img_time, time.time(), False))
                             # driver.receive_telemetry(r_x, r_z)
                     
+                    end_tags = [3, 2]
+                    row_tags = [0, 1]
+                    
                     max_dist = 0
                     selected = tag_info[0]
+                    turning = False
                     for tag in tag_info:
-                        if tag.id == driver.target_tag:
+                        # print(f"CHECKING {tag.forward} for {tag.id} of type {type(tag.id)} against {driver.target_tag} of type {type(driver.target_tag)}")
+                        if turning and tag.id in end_tags:
+                            continue
+                        if tag.forward > MAX_TAG_DIST:
+                            # print("RAN MAX CHECK")
+                            continue
+                        if int(tag.id) == int(driver.target_tag):
+                            # print('RAN SELECTED TAG')
                             selected = tag
                             break
-                        if tag.forward > MAX_TAG_DIST:
-                            continue
                         if tag.forward > max_dist:
+                            # print('RAN SELECT MAX')
                             selected = tag
                             max_dist = tag.forward
                             continue
@@ -471,14 +484,27 @@ def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros
                     for info in tag_info:
                         recordings.append(str(info))
                     
-                    if selected.id == driver.target_tag:
+                    if selected.id in row_tags:
+                        driver.pid.setpoint = 1.6
+                        
+                    if selected.id in end_tags:
+                        driver.pid.setpoint = -1.6
+                        
+                    if int(selected.id) == 0:
+                        driver.pid.setpoint = 1.8
+                    
+                    if selected.id == int(driver.target_tag):
                         if selected.forward < TURN_DIST:
+                            turning = True
                             print('### TURNING RIGHT ###')
                             driver.execute_turn('right')
+                        else:
+                            driver.receive_telemetry(selected.side, selected.forward)
+                    else:
+                        driver.receive_telemetry(selected.side, selected.forward)
                     
-                    print(f"Following {selected.id}")
+                    print(f"Following {selected.id}, target {driver.target_tag}")
                     
-                    driver.receive_telemetry(selected.side, selected.forward)
                         
                 
         else:
@@ -507,10 +533,10 @@ def ProcessImages(det: Detector, driver: Driver, term=None, stop_event=None, ros
                 else:
                     print("No pose estimated")
                     print(f"\rTime: {image.header.stamp.secs if ros else 'None'}, ID: {tag.tag_id}", end="")
-        # cv.namedWindow(window_name, cv.WINDOW_NORMAL)
-        # cv.imshow(window_name, overlayed)
+        cv.namedWindow(window_name, cv.WINDOW_NORMAL)
+        cv.imshow(window_name, overlayed)
         # # cv.imshow(window_name, bw_image)
-        # cv.waitKey(1)
+        cv.waitKey(1)
         
 
 def pixel_side_calc(m_side, dist):
@@ -615,7 +641,7 @@ def run_ros(args):
     thread.join()
     rospy.signal_shutdown("Closing")
     
-    # cv.destroyAllWindows()
+    cv.destroyAllWindows()
 
 
 def continuous_camera_capture(event: threading.Event):
@@ -657,7 +683,7 @@ def run_local(args):
 
     kp, ki, kd = args.pid if args.pid else pid_default
 
-    driver = Driver(kp, ki, kd, args.target, args.active, pub, target_tag=1, serial=True) # OpenCV
+    driver = Driver(kp, ki, kd, args.target, args.active, pub, target_tag=args.tag, serial=True) # OpenCV
     # driver = Driver(0.5, 0.2, 0.1, 2, False, pub) # Other
     
     detector = Detector(args.size, calibrator=calibration)

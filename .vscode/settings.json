@@ -2,10 +2,10 @@
     "python.analysis.typeCheckingMode": "basic",
     "python.terminal.activateEnvironment": true,
     "python.autoComplete.extraPaths": [
-        "/opt/ros/noetic/lib/python3/dist-packages"
+        "/opt/ros/melodic/lib/python3/dist-packages"
     ],
     "python.analysis.extraPaths": [
-        "/opt/ros/noetic/lib/python3/dist-packages"
+        "/opt/ros/melodic/lib/python3/dist-packages"
     ],
-    "cmake.sourceDirectory": "/home/joelshep/documents/university/ENGEN582/catkin_ws/src/test_get_image"
+    "cmake.sourceDirectory": "/home/jetson/Documents/Code/ENGEN582/catkin_ws/src/test_get_image"
 }

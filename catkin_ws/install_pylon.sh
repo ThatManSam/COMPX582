@@ -11,7 +11,8 @@ platform=$(uname -m)
 
 if [[ "$platform" == "arm64" || "$platform" == "aarch64" ]]; then
 # if [[ "$platform" == "aarch64" ]]; then
-    URL=https://www.baslerweb.com/fp-1668420816/media/downloads/software/pylon_software/pylon_7.2.1.25747_aarch64_debs.tar.gz
+    # URL=https://www.baslerweb.com/fp-1668420816/media/downloads/software/pylon_software/pylon_7.2.1.25747_aarch64_debs.tar.gz
+    URL=https://www2.baslerweb.com/media/downloads/software/pylon_software/pylon_7.2.1.25747_aarch64_setup.tar.gz
 else
     URL=https://www.baslerweb.com/fp-1668420813/media/downloads/software/pylon_software/pylon_7.2.1.25747_x86_64_debs.tar.gz
 fi
@@ -25,7 +26,7 @@ tar -xf pylon.tar.gz
 check_response "Extracting Files"
 
 echo "/Installing .deb packages"
-dpkg -i ./pylon*.deb
+sudo dpkg -i ./pylon*.deb
 check_response "Installing .deb packages"
 
 echo "/Running setup script"
