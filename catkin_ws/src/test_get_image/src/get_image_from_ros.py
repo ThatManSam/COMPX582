@@ -305,7 +305,7 @@ def calc_pose_opencv(tag, det, image, term=None):
         # z_rounded = int(round(z_adjusted))
         area = calc_area(tag.corners)
         # show_stats(term, x_rounded, z_rounded, x_adjusted, z_adjusted, x, z, angle_left_right_degrees, rot_calced, area, other_calced)
-        # show_stats(term, x, z, area)
+        show_stats(term, x, z, area)
         return x, y, z, area
     else:
         print("Can't calculate pose")
